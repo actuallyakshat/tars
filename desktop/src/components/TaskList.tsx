@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Task } from "../api";
-import { type Group, NEEDS_YOU, OPEN, STATUS, VIEWS, ago, dueText, priorityMark } from "../model";
+import { type Group, type GroupBy, type SortBy, GROUPINGS, NEEDS_YOU, OPEN, SORTS, STATUS, VIEWS, ago, dueText, priorityMark } from "../model";
+import { PreviewToggle, SidebarToggle } from "./Panes";
 
 interface Props {
   groups: Group[];
@@ -8,17 +9,24 @@ interface Props {
   totalOpen: number;
   selectedId: number | null;
   now: Date;
+  query: string;
+  group: GroupBy;
+  sort: SortBy;
+  onQuery: (q: string) => void;
+  onGroup: (g: GroupBy) => void;
+  onSort: (s: SortBy) => void;
   onSelect: (id: number) => void;
   onOpen: (id: number) => void;
 }
 
-function emptyMessage(view: number, totalOpen: number) {
+function emptyMessage(view: number, totalOpen: number, query: string) {
+  if (query.trim()) return `No tasks here match “${query.trim()}”. Esc clears the search.`;
   if (view === NEEDS_YOU) return "Nothing needs you. When an agent gets stuck, its question shows up here.";
   if (view === OPEN && totalOpen === 0) return "No open tasks. Press c to add one.";
   return "Nothing here.";
 }
 
-export function TaskList({ groups, view, totalOpen, selectedId, now, onSelect, onOpen }: Props) {
+export function TaskList({ groups, view, totalOpen, selectedId, now, query, group, sort, onQuery, onGroup, onSort, onSelect, onOpen }: Props) {
   const selRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
     selRef.current?.scrollIntoView?.({ block: "nearest" });
@@ -27,18 +35,25 @@ export function TaskList({ groups, view, totalOpen, selectedId, now, onSelect, o
   return (
     <section className="list" aria-label={VIEWS[view].name}>
       <header className="list-head drag" data-tauri-drag-region>
+        <SidebarToggle />
         <h1>{VIEWS[view].name}</h1>
+        <span className="spacer" data-tauri-drag-region />
+        <SearchBox query={query} onQuery={onQuery} />
+        <DisplayMenu group={group} sort={sort} onGroup={onGroup} onSort={onSort} />
+        <PreviewToggle />
       </header>
       {groups.length === 0 ? (
-        <p className="empty">{emptyMessage(view, totalOpen)}</p>
+        <p className="empty">{emptyMessage(view, totalOpen, query)}</p>
       ) : (
         <div className="list-scroll">
           {groups.map((g) => (
             <div key={g.label} className="group">
-              <h2 className="group-head">
-                {g.label} <span>· {g.tasks.length}</span>
-              </h2>
-              <ul role="listbox" aria-label={`${g.label} priority`}>
+              {g.label && (
+                <h2 className="group-head">
+                  {g.label} <span>· {g.tasks.length}</span>
+                </h2>
+              )}
+              <ul role="listbox" aria-label={g.label || "Tasks"}>
                 {g.tasks.map((t) => (
                   <Row
                     key={t.id}
@@ -109,5 +124,105 @@ function Row({ t, now, selected, ref, onSelect, onOpen }: RowProps) {
       <span className="c-repo">{t.repo}</span>
       <span className={`c-due tone-${due.tone}`}>{due.text}</span>
     </li>
+  );
+}
+
+// Filters the list as you type. / focuses it; Esc clears it.
+function SearchBox({ query, onQuery }: { query: string; onQuery: (q: string) => void }) {
+  return (
+    <label className={"list-search" + (query ? " has-query" : "")}>
+      <svg width="13" height="13" viewBox="0 0 15 15" aria-hidden="true">
+        <circle cx="6.5" cy="6.5" r="4.6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <path d="m10 10 3.4 3.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+      <input
+        id="list-search"
+        aria-label="Filter tasks"
+        value={query}
+        placeholder="Filter"
+        spellCheck={false}
+        onChange={(e) => onQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            onQuery("");
+            e.currentTarget.blur();
+          } else if (e.key === "Enter" || e.key === "ArrowDown") {
+            e.currentTarget.blur();
+          }
+        }}
+      />
+      {!query && <kbd>/</kbd>}
+    </label>
+  );
+}
+
+// Group and sort choices for the list. g cycles the grouping from the keyboard.
+function DisplayMenu({
+  group,
+  sort,
+  onGroup,
+  onSort,
+}: {
+  group: GroupBy;
+  sort: SortBy;
+  onGroup: (g: GroupBy) => void;
+  onSort: (s: SortBy) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+
+  return (
+    <div className="display-menu" ref={root}>
+      <button
+        className={"icon-button" + (open ? " on" : "")}
+        aria-label="Display options"
+        aria-expanded={open}
+        title="Group and sort (g cycles grouping)"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2.5 4.5h11M4.5 8h7M6.5 11.5h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          className="display-pop"
+          role="dialog"
+          aria-label="Display options"
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Escape") setOpen(false);
+          }}
+        >
+          <fieldset>
+            <legend>Group by</legend>
+            {GROUPINGS.map((g) => (
+              <label key={g.id} className={"display-option" + (g.id === group ? " on" : "")}>
+                <input type="radio" name="group" checked={g.id === group} onChange={() => onGroup(g.id)} />
+                {g.label}
+              </label>
+            ))}
+          </fieldset>
+          <fieldset>
+            <legend>Sort by</legend>
+            {SORTS.map((o) => (
+              <label key={o.id} className={"display-option" + (o.id === sort ? " on" : "")}>
+                <input type="radio" name="sort" checked={o.id === sort} onChange={() => onSort(o.id)} />
+                {o.label}
+              </label>
+            ))}
+          </fieldset>
+        </div>
+      )}
+    </div>
   );
 }

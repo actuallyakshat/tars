@@ -1,9 +1,16 @@
 [package]
 name = "tars-desktop"
 version = "0.1.0"
-description = "tars for macOS"
+description = "Tars for macOS"
 edition = "2021"
 license = "MIT"
+default-run = "Tars"
+
+# macOS names the running app after its binary (menu bar, Dock, ⌘Tab), so
+# the binary carries the product name rather than the crate's.
+[[bin]]
+name = "Tars"
+path = "src/main.rs"
 
 [lib]
 name = "tars_desktop"

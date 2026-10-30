@@ -96,6 +96,29 @@ pub fn open_url(url: &str) -> Result<()> {
     run(Command::new("open").arg(url), "open the link")
 }
 
+/// The folder picker. None when the user cancels.
+pub fn choose_folder() -> Result<Option<String>> {
+    let out = Command::new("osascript")
+        .arg("-e")
+        .arg("POSIX path of (choose folder with prompt \"Choose the repo's folder\")")
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| sys(format!("Couldn't open the folder picker: {e}")))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        if err.contains("-128") {
+            return Ok(None);
+        }
+        return Err(sys(format!("Couldn't open the folder picker: {}", err.trim())));
+    }
+    Ok(Some(folder_path(&String::from_utf8_lossy(&out.stdout))))
+}
+
+fn folder_path(s: &str) -> String {
+    let p = s.trim();
+    if p.len() > 1 { p.trim_end_matches('/').to_string() } else { p.to_string() }
+}
+
 fn run(cmd: &mut Command, what: &str) -> Result<()> {
     let out = cmd.stdin(Stdio::null()).output().map_err(|e| sys(format!("Couldn't {what}: {e}")))?;
     if !out.status.success() {
@@ -108,6 +131,12 @@ fn run(cmd: &mut Command, what: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_paths_lose_the_trailing_slash() {
+        assert_eq!(folder_path("/Users/me/code/billing/\n"), "/Users/me/code/billing");
+        assert_eq!(folder_path("/\n"), "/");
+    }
 
     #[test]
     fn session_ids_are_validated() {

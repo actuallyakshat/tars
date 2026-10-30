@@ -71,6 +71,24 @@ export interface NewTask {
   body?: string;
 }
 
+/** Fields to change on a task. Absent fields stay; "" clears, due takes "none". */
+export interface TaskEdit {
+  title?: string;
+  body?: string;
+  priority?: string;
+  jira?: string;
+  repo?: string;
+  due?: string;
+  tag?: string[];
+  untag?: string[];
+}
+
+export interface Repo {
+  name: string;
+  path?: string;
+  updated_at: string;
+}
+
 export interface CliStatus {
   bin: string;
   version: string;
@@ -100,6 +118,7 @@ export const api = {
   list: () => invoke<Task[]>("list_tasks"),
   show: (id: number) => invoke<Task>("show_task", { id }),
   add: (task: NewTask) => invoke<Task>("add_task", { task }),
+  edit: (id: number, edit: TaskEdit) => invoke<Task>("edit_task", { id, edit }),
   setStatus: (id: number, status: Status) => invoke<Task[]>("set_status", { id, status }),
   answer: (id: number, text: string) => invoke("answer_task", { id, text }),
   note: (id: number, text: string) => invoke("add_note", { id, text }),
@@ -109,4 +128,9 @@ export const api = {
     invoke<void>("open_in_terminal", { sessionId, launchDir: launchDir || null }),
   reveal: (path: string) => invoke<void>("reveal_path", { path }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
+  repos: () => invoke<Repo[]>("list_repos"),
+  setRepo: (name: string, path: string) => invoke<Repo>("set_repo", { name, path }),
+  removeRepo: (name: string) => invoke("remove_repo", { name }),
+  chooseFolder: () => invoke<string | null>("choose_folder"),
+  zoom: (scale: number) => invoke<void>("set_zoom", { scale }),
 };

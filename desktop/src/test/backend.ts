@@ -2,7 +2,7 @@
 // something that behaves like the CLI.
 import { invoke } from "@tauri-apps/api/core";
 import { vi } from "vitest";
-import type { CliError, Task } from "../api";
+import type { CliError, Repo, Task } from "../api";
 
 const NOW = new Date();
 const iso = (minutesAgo: number) => new Date(NOW.getTime() - minutesAgo * 60_000).toISOString();
@@ -97,6 +97,8 @@ export function sampleTasks(): Task[] {
 
 export interface Backend {
   tasks: Task[];
+  repos: Repo[];
+  folder: string | null;
   calls: [string, Record<string, unknown> | undefined][];
   fail: Partial<Record<string, CliError>>;
   callsTo: (cmd: string) => (Record<string, unknown> | undefined)[];
@@ -105,6 +107,8 @@ export interface Backend {
 export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
   const b: Backend = {
     tasks: structuredClone(initial),
+    repos: [{ name: "billing-svc", path: "/Users/me/code/billing-svc", updated_at: NOW.toISOString() }],
+    folder: "/Users/me/code/promos-ui",
     calls: [],
     fail: {},
     callsTo: (cmd) => b.calls.filter(([c]) => c === cmd).map(([, a]) => a),
@@ -163,6 +167,35 @@ export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
         b.tasks.push(t);
         return structuredClone(t);
       }
+      case "edit_task": {
+        const t = find(args!.id);
+        const e = args!.edit as Record<string, unknown> & { tag?: string[]; untag?: string[] };
+        for (const k of ["title", "body", "jira", "repo"] as const) {
+          if (typeof e[k] === "string") (t as unknown as Record<string, unknown>)[k] = e[k] || undefined;
+        }
+        if (typeof e.due === "string") t.due = e.due === "none" ? undefined : e.due;
+        if (typeof e.priority === "string") t.priority = ["urgent", "high", "normal", "low"].indexOf(e.priority);
+        const tags = (t.tags ?? []).filter((x) => !e.untag?.includes(x));
+        for (const x of e.tag ?? []) if (!tags.includes(x)) tags.push(x);
+        t.tags = tags.length ? tags : undefined;
+        return structuredClone(t);
+      }
+      case "list_repos":
+        return structuredClone(b.repos);
+      case "set_repo": {
+        const name = args!.name as string;
+        const path = (args!.path as string).replace(/^~/, "/Users/me");
+        if (!path.startsWith("/")) throw { kind: "failed", message: "Use the folder's full path, like ~/code/billing-svc." };
+        const r = { name, path, updated_at: new Date().toISOString() };
+        b.repos = [...b.repos.filter((x) => x.name !== name), r].sort((x, y) => x.name.localeCompare(y.name));
+        return r;
+      }
+      case "remove_repo":
+        b.repos = b.repos.filter((x) => x.name !== args!.name);
+        return { deleted: args!.name };
+      case "choose_folder":
+        return b.folder;
+      case "set_zoom":
       case "copy_text":
       case "open_in_terminal":
       case "reveal_path":

@@ -7,7 +7,7 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 use serde_json::Value;
-use tars_desktop::cli::{self, ErrorKind, NewTask, Tars};
+use tars_desktop::cli::{self, ErrorKind, NewTask, TaskEdit, Tars};
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap()
@@ -140,6 +140,33 @@ fn reads_and_writes_through_the_real_cli() {
     let last = log.last().unwrap();
     assert_eq!(last["text"], "-v is fine as a note");
     assert_eq!(last["author"], "user");
+
+    let edited = t
+        .edit(
+            1,
+            &TaskEdit {
+                title: Some("Retry webhooks".into()),
+                jira: Some("".into()),
+                due: Some("none".into()),
+                priority: Some("low".into()),
+                tag: vec!["urgent".into()],
+                untag: vec!["perf".into()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(edited["title"], "Retry webhooks");
+    assert!(edited.get("jira").is_none());
+    assert!(edited.get("due").is_none());
+    assert_eq!(edited["priority"], 3);
+    assert_eq!(edited["tags"], serde_json::json!(["backend", "urgent"]));
+    assert_eq!(t.edit(1, &TaskEdit::default()).unwrap()["title"], "Retry webhooks");
+
+    let repo = t.set_repo("billing-svc", "~/code/billing", Some(Path::new("/home/me"))).unwrap();
+    assert_eq!(repo["path"], "/home/me/code/billing");
+    assert_eq!(t.repos().unwrap()[0]["name"], "billing-svc");
+    t.remove_repo("billing-svc").unwrap();
+    assert_eq!(t.repos().unwrap(), Value::Array(vec![]));
 
     let moved = t.mv(1, "in-review").unwrap();
     assert_eq!(moved[0]["status"], "in-review");

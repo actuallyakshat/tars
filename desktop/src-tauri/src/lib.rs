@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::State;
 
-use cli::{CliError, ErrorKind, NewTask, Result, Tars};
+use cli::{CliError, ErrorKind, NewTask, Result, Tars, TaskEdit};
 
 /// The tars binary in use, found on first need and again after a failure to
 /// run it, so installing or upgrading the CLI doesn't need an app restart.
@@ -92,6 +92,11 @@ async fn add_task(state: State<'_, AppState>, task: NewTask) -> Result<Value> {
 }
 
 #[tauri::command]
+async fn edit_task(state: State<'_, AppState>, id: i64, edit: TaskEdit) -> Result<Value> {
+    with_tars(state, move |t| t.edit(id, &edit)).await
+}
+
+#[tauri::command]
 async fn set_status(state: State<'_, AppState>, id: i64, status: String) -> Result<Value> {
     with_tars(state, move |t| if status == "done" { t.done(id) } else { t.mv(id, &status) }).await
 }
@@ -131,6 +136,33 @@ async fn open_url(url: String) -> Result<()> {
     blocking(move || mac::open_url(&url)).await
 }
 
+#[tauri::command]
+async fn list_repos(state: State<'_, AppState>) -> Result<Value> {
+    with_tars(state, |t| t.repos()).await
+}
+
+#[tauri::command]
+async fn set_repo(state: State<'_, AppState>, name: String, path: String) -> Result<Value> {
+    with_tars(state, move |t| t.set_repo(&name, &path, home().as_deref())).await
+}
+
+#[tauri::command]
+async fn remove_repo(state: State<'_, AppState>, name: String) -> Result<Value> {
+    with_tars(state, move |t| t.remove_repo(&name)).await
+}
+
+#[tauri::command]
+async fn choose_folder() -> Result<Option<String>> {
+    blocking(mac::choose_folder).await
+}
+
+#[tauri::command]
+fn set_zoom(window: tauri::WebviewWindow, scale: f64) -> Result<()> {
+    window
+        .set_zoom(scale.clamp(0.5, 2.0))
+        .map_err(|e| CliError::new(ErrorKind::System, format!("Couldn't zoom: {e}")))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -140,6 +172,7 @@ pub fn run() {
             list_tasks,
             show_task,
             add_task,
+            edit_task,
             set_status,
             answer_task,
             add_note,
@@ -148,6 +181,11 @@ pub fn run() {
             open_in_terminal,
             reveal_path,
             open_url,
+            list_repos,
+            set_repo,
+            remove_repo,
+            choose_folder,
+            set_zoom,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tars");

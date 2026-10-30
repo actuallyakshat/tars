@@ -59,22 +59,106 @@ export interface Group {
   tasks: Task[];
 }
 
-/** Tasks in a view, grouped by priority, in display order. */
-export function groupTasks(tasks: Task[], view: number): Group[] {
-  const inView = tasks.filter(VIEWS[view].has);
-  inView.sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority;
-    if (!a.due !== !b.due) return a.due ? -1 : 1;
-    if ((a.due ?? "") !== (b.due ?? "")) return (a.due ?? "") < (b.due ?? "") ? -1 : 1;
-    if (view === DONE) return (b.done_at ?? "").localeCompare(a.done_at ?? "");
-    return a.id - b.id;
-  });
+export type GroupBy = "priority" | "due" | "status" | "repo" | "none";
+export type SortBy = "priority" | "due" | "updated" | "created" | "title";
+
+export const GROUPINGS: { id: GroupBy; label: string }[] = [
+  { id: "priority", label: "Priority" },
+  { id: "due", label: "Due date" },
+  { id: "status", label: "Status" },
+  { id: "repo", label: "Repo" },
+  { id: "none", label: "No grouping" },
+];
+
+export const SORTS: { id: SortBy; label: string }[] = [
+  { id: "priority", label: "Priority, then due" },
+  { id: "due", label: "Due date" },
+  { id: "updated", label: "Recently updated" },
+  { id: "created", label: "Newest first" },
+  { id: "title", label: "Title" },
+];
+
+// Same order as the TUI: what needs a look first.
+const STATUS_ORDER: Record<Status, number> = { "in-review": 0, "in-progress": 1, ready: 2, inbox: 3, blocked: 4, done: 5 };
+
+/** The group a task falls in, and the group's place in the list. */
+export function groupOf(t: Task, by: GroupBy, now: Date): [string, number] {
+  switch (by) {
+    case "priority": {
+      const p = clampPriority(t.priority);
+      return [PRIORITIES[p], p];
+    }
+    case "due": {
+      const days = daysUntil(t.due, now);
+      if (days === null) return ["No date", 5];
+      if (days < 0) return ["Overdue", 0];
+      if (days === 0) return ["Today", 1];
+      if (days === 1) return ["Tomorrow", 2];
+      if (days < 7) return ["This week", 3];
+      return ["Later", 4];
+    }
+    case "status":
+      return [STATUS[t.status].label, STATUS_ORDER[t.status]];
+    case "repo":
+      return t.repo ? [t.repo, 0] : ["No repo", 1];
+    case "none":
+      return ["", 0];
+  }
+}
+
+/** Every word of the query appears in the task's title, #id, Jira key, repo or tags. */
+export function matchesQuery(t: Task, query: string) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = [`#${t.id}`, t.title, t.jira, t.repo, ...(t.tags ?? [])].join(" ").toLowerCase();
+  return words.every((w) => hay.includes(w));
+}
+
+const byDue = (a: Task, b: Task) => {
+  if (!a.due !== !b.due) return a.due ? -1 : 1;
+  return (a.due ?? "").localeCompare(b.due ?? "");
+};
+
+function compare(a: Task, b: Task, sort: SortBy, view: number) {
+  switch (sort) {
+    case "due":
+      return byDue(a, b) || a.priority - b.priority || a.id - b.id;
+    case "updated":
+      return b.updated_at.localeCompare(a.updated_at) || b.id - a.id;
+    case "created":
+      return b.created_at.localeCompare(a.created_at) || b.id - a.id;
+    case "title":
+      return a.title.localeCompare(b.title, undefined, { sensitivity: "base" }) || a.id - b.id;
+    case "priority":
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      return (
+        byDue(a, b) ||
+        // Done: most recently finished first
+        (view === DONE ? (b.done_at ?? "").localeCompare(a.done_at ?? "") : 0) ||
+        a.id - b.id
+      );
+  }
+}
+
+export interface ListOptions {
+  group?: GroupBy;
+  sort?: SortBy;
+  query?: string;
+  now?: Date;
+}
+
+/** Tasks in a view, filtered, grouped and sorted in display order. */
+export function groupTasks(tasks: Task[], view: number, opts: ListOptions = {}): Group[] {
+  const { group = "priority", sort = "priority", query = "", now = new Date() } = opts;
+  const items = tasks
+    .filter((t) => VIEWS[view].has(t) && matchesQuery(t, query))
+    .map((t) => ({ t, g: groupOf(t, group, now) }));
+  items.sort((a, b) => a.g[1] - b.g[1] || a.g[0].localeCompare(b.g[0]) || compare(a.t, b.t, sort, view));
   const groups: Group[] = [];
-  for (const t of inView) {
-    const label = PRIORITIES[clampPriority(t.priority)];
+  for (const { t, g } of items) {
     const last = groups[groups.length - 1];
-    if (last?.label === label) last.tasks.push(t);
-    else groups.push({ label, tasks: [t] });
+    if (last?.label === g[0]) last.tasks.push(t);
+    else groups.push({ label: g[0], tasks: [t] });
   }
   return groups;
 }

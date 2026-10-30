@@ -1,9 +1,13 @@
 import type { Report, Status, Task, TaskSession } from "../api";
-import { PRIORITIES, STATUS, STATUSES, ago, clampPriority, dueText, openQuestion, priorityMark } from "../model";
+import { ago, clampPriority, dueText, openQuestion } from "../model";
 import { Composer } from "./Composer";
+import { PriorityPicker, StatusPicker } from "./StatusPicker";
 
 export interface DetailActions {
+  onClose: () => void;
+  onEdit: () => void;
   onStatus: (status: Status) => void;
+  onPriority: (priority: number) => void;
   onToggleDone: () => void;
   onAnswer: (text: string) => Promise<boolean>;
   onNote: (text: string) => Promise<boolean>;
@@ -42,29 +46,19 @@ export function Detail(p: Props) {
       <div className="detail-scroll">
         <header className="detail-head">
           <span className="mono muted">#{t.id}</span>
-          <label className={`status-pick st-${t.status}`}>
-            <span aria-hidden="true">{STATUS[t.status].icon}</span>
-            <select
-              aria-label="Status"
-              id="status-select"
-              value={t.status}
-              onChange={(e) => p.onStatus(e.target.value as Status)}
-            >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS[s].label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {prio !== 2 && (
-            <span className={`prio-badge p${prio}`}>
-              {priorityMark(prio)} {PRIORITIES[prio]}
-            </span>
-          )}
+          <StatusPicker value={t.status} onChange={p.onStatus} />
+          <PriorityPicker value={prio} onChange={p.onPriority} />
           <span className="spacer" />
+          <button className="ghost" onClick={p.onEdit} title="Edit (e)">
+            Edit
+          </button>
           <button className="ghost" onClick={p.onToggleDone} title="x">
             {t.status === "done" ? "Reopen" : "Mark done"}
+          </button>
+          <button className="icon-button" onClick={p.onClose} aria-label="Close preview" title="Close preview (⌘⇧B)">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
           </button>
         </header>
 

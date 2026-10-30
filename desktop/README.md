@@ -1,4 +1,4 @@
-# tars for macOS
+# Tars for macOS
 
 A desktop window onto the same task list as `tars` in the terminal: views on the left (Needs you first), a one-line-per-task list in the middle, and the task with its latest agent report, linked Claude sessions and activity on the right. It refreshes every few seconds, so agent work shows up as it happens.
 
@@ -6,19 +6,27 @@ The app has no database code of its own. Every read and write runs the `tars` CL
 
 | Key | Action |
 |---|---|
-| `j k` / `↑↓` | Move |
+| `j k` / `↑↓`, `home` `end` | Move |
 | `enter` / `esc` | Focus the details / back to the list |
-| `1`–`7` | Switch view |
+| `1`–`7`, `tab` `⇧tab` | Switch view |
+| `/` | Filter the list |
+| `g` | Change grouping (priority, due, status, repo, none) |
 | `x` | Done (again: reopen) |
-| `s` | Change status |
+| `s` / `p` | Change status / priority |
+| `u` | Undo the last status or priority change |
+| `e` | Edit the task |
 | `a` | Answer the agent's question |
 | `n` | Add a note |
-| `c` | New task |
+| `c` / `⌘N` | New task |
 | `o` | Copy the latest session's resume command |
 | `l` | Expand / collapse activity |
+| `⌘K` | Search tasks and commands |
+| `⌘B` / `⌘⇧B` | Show or hide the sidebar / preview |
+| `⌘+` `⌘−` `⌘0` | Zoom |
 | `⌘R` | Refresh |
+| `?` | Legend |
 
-Jira keys open in the browser once you set your Jira URL in Settings; until then clicking one copies it. The ● stays until you open the task in the terminal UI, because the CLI has no command to mark a task seen yet.
+Grouping and sort order are in the list header's display menu. Repo folders are set in Settings → Repos. Jira keys open in the browser once you set your Jira URL in Settings; until then clicking one copies it. Opening a task clears its ●.
 
 ## Development
 

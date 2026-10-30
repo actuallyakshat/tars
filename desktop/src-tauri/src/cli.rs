@@ -115,10 +115,25 @@ pub struct NewTask {
     pub body: String,
 }
 
+/// What the UI sends to change a task. Only fields that are present change;
+/// an empty string clears a field (due takes "none").
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct TaskEdit {
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub priority: Option<String>,
+    pub jira: Option<String>,
+    pub repo: Option<String>,
+    pub due: Option<String>,
+    pub tag: Vec<String>,
+    pub untag: Vec<String>,
+}
+
 /// Arguments after the global flags for each command the app uses. Free text
 /// goes after `--` so a note starting with "-" isn't read as a flag.
 pub mod args {
-    use super::NewTask;
+    use super::{NewTask, TaskEdit};
 
     pub fn probe() -> Vec<String> {
         vec!["ls".into(), "--needs-you".into()]
@@ -170,6 +185,42 @@ pub mod args {
         }
         a.push("--".into());
         a.push(t.title.trim().into());
+        a
+    }
+
+    pub fn repos() -> Vec<String> {
+        vec!["repo".into(), "ls".into()]
+    }
+
+    pub fn set_repo(name: &str, path: &str) -> Vec<String> {
+        vec!["repo".into(), "set".into(), format!("--path={path}"), "--".into(), name.trim().into()]
+    }
+
+    pub fn remove_repo(name: &str) -> Vec<String> {
+        vec!["repo".into(), "rm".into(), "--".into(), name.into()]
+    }
+
+    /// Values use --flag=value so an empty one clears the field and one
+    /// starting with "-" isn't read as a flag.
+    pub fn edit(id: i64, e: &TaskEdit) -> Vec<String> {
+        let mut a = vec!["edit".to_string(), id.to_string()];
+        for (flag, v) in [
+            ("title", &e.title),
+            ("body", &e.body),
+            ("priority", &e.priority),
+            ("jira", &e.jira),
+            ("repo", &e.repo),
+            ("due", &e.due),
+        ] {
+            if let Some(v) = v {
+                a.push(format!("--{flag}={v}"));
+            }
+        }
+        for (flag, tags) in [("tag", &e.tag), ("untag", &e.untag)] {
+            for t in tags.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
+                a.push(format!("--{flag}={t}"));
+            }
+        }
         a
     }
 }
@@ -248,6 +299,40 @@ impl Tars {
             return Err(CliError::new(ErrorKind::Failed, "A task needs a title."));
         }
         parse_task(&self.run(&args::add(t))?)
+    }
+
+    pub fn edit(&self, id: i64, e: &TaskEdit) -> Result<Value> {
+        let a = args::edit(id, e);
+        if a.len() == 2 {
+            return self.show(id);
+        }
+        parse_task(&self.run(&a)?)
+    }
+
+    pub fn repos(&self) -> Result<Value> {
+        let v = parse_json(&self.run(&args::repos())?)?;
+        match &v {
+            Value::Array(items) if items.iter().all(|r| r.get("name").is_some()) => Ok(v),
+            _ => Err(CliError::new(ErrorKind::BadOutput, "Expected a list of repos from tars.")),
+        }
+    }
+
+    /// Creates a repo profile or points an existing one at a new folder. The
+    /// CLI would resolve a relative path against the app's own folder, so only
+    /// full paths (or ~/…) are accepted.
+    pub fn set_repo(&self, name: &str, path: &str, home: Option<&Path>) -> Result<Value> {
+        if name.trim().is_empty() {
+            return Err(CliError::new(ErrorKind::Failed, "A repo needs a name."));
+        }
+        let full = expand_home(path.trim(), home);
+        if !full.is_absolute() {
+            return Err(CliError::new(ErrorKind::Failed, "Use the folder's full path, like ~/code/billing-svc."));
+        }
+        parse_object(&self.run(&args::set_repo(name, &full.to_string_lossy()))?)
+    }
+
+    pub fn remove_repo(&self, name: &str) -> Result<Value> {
+        parse_object(&self.run(&args::remove_repo(name))?)
     }
 
     pub fn mv(&self, id: i64, status: &str) -> Result<Value> {
@@ -469,6 +554,32 @@ mod tests {
         );
         let plain = NewTask { title: "x".into(), ..Default::default() };
         assert_eq!(args::add(&plain), ["add", "--", "x"]);
+    }
+
+    #[test]
+    fn edit_args_send_only_changed_fields() {
+        let e = TaskEdit {
+            title: Some("-v flag".into()),
+            jira: Some("".into()),
+            due: Some("none".into()),
+            tag: vec!["perf".into(), " ".into()],
+            untag: vec!["later".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            args::edit(7, &e),
+            ["edit", "7", "--title=-v flag", "--jira=", "--due=none", "--tag=perf", "--untag=later"]
+        );
+        assert_eq!(args::edit(7, &TaskEdit::default()), ["edit", "7"]);
+    }
+
+    #[test]
+    fn repo_args_keep_the_name_after_dashes() {
+        assert_eq!(args::set_repo(" -odd ", "/w/x"), ["repo", "set", "--path=/w/x", "--", "-odd"]);
+        assert_eq!(args::remove_repo("x"), ["repo", "rm", "--", "x"]);
+        let t = Tars::new("/nonexistent/tars");
+        assert_eq!(t.set_repo("x", "code/x", None).unwrap_err().kind, ErrorKind::Failed);
+        assert_eq!(t.set_repo(" ", "/w/x", None).unwrap_err().message, "A repo needs a name.");
     }
 
     #[test]
