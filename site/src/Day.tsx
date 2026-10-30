@@ -104,7 +104,7 @@ export function Day() {
   return (
     <section id="day" className="section day" aria-labelledby="day-title">
       <Reveal>
-        <h2 id="day-title">A day with tars</h2>
+        <h2 id="day-title">A day with Tars</h2>
         <p className="section-lede">
           The list is only half of it. Here is how a day goes when the agent keeps it for you.
         </p>

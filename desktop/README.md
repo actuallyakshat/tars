@@ -15,6 +15,7 @@ The app has no database code of its own. Every read and write runs the `tars` CL
 | `s` / `p` | Change status / priority |
 | `u` | Undo the last status or priority change |
 | `e` | Edit the task |
+| `⌘⌫` | Delete the task (asks first). Right-click a task for Edit, Done and Delete |
 | `a` | Answer the agent's question |
 | `n` | Add a note |
 | `c` / `⌘N` | New task |

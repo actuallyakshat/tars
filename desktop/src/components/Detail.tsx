@@ -29,6 +29,9 @@ interface Props extends DetailActions {
   logOpen: boolean;
 }
 
+/** /Users/me/Work/x → ~/Work/x, so the part that matters fits. */
+const shortPath = (p: string) => p.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
+
 export function Detail(p: Props) {
   const { task: t, now } = p;
   if (!t) {
@@ -93,20 +96,29 @@ export function Detail(p: Props) {
             <ul className="sessions">
               {t.sessions.map((s) => (
                 <li key={s.id} className="session">
-                  <div className="session-main">
+                  <div className="session-top">
                     <span className="session-name">{s.name || "Unnamed session"}</span>
-                    <span className="muted"> · {ago(s.last_at, now)}</span>
-                    <div className="mono muted small">
-                      {s.launch_dir && <span title="Started in">{s.launch_dir} · </span>}
-                      {s.id}
-                    </div>
+                    <span className="session-when muted">{ago(s.last_at, now)}</span>
                   </div>
+                  {s.launch_dir && (
+                    <div className="session-dir mono" title={`Started in ${s.launch_dir}`}>
+                      {shortPath(s.launch_dir)}
+                    </div>
+                  )}
                   <div className="session-actions">
-                    <button className="ghost" onClick={() => p.onCopy(`claude --resume ${s.id}`, "resume command")}>
-                      Copy resume command
+                    <button className="ghost strong" onClick={() => p.onTerminal(s)}>
+                      Resume in Terminal
                     </button>
-                    <button className="ghost" onClick={() => p.onTerminal(s)}>
-                      Open in Terminal
+                    <button className="ghost" onClick={() => p.onCopy(`claude --resume ${s.id}`, "resume command")}>
+                      Copy command
+                    </button>
+                    <button
+                      className="session-id mono"
+                      title={`Session ${s.id}. Click to copy.`}
+                      aria-label={`Copy session ID ${s.id}`}
+                      onClick={() => p.onCopy(s.id, "session ID")}
+                    >
+                      {s.id.slice(0, 8)}
                     </button>
                   </div>
                 </li>

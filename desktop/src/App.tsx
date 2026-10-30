@@ -20,7 +20,8 @@ import {
 import { Sidebar } from "./components/Sidebar";
 import { TaskList } from "./components/TaskList";
 import { Detail } from "./components/Detail";
-import { CliProblem } from "./components/Dialogs";
+import { CliProblem, ConfirmDialog } from "./components/Dialogs";
+import { ContextMenu } from "./components/ContextMenu";
 import { EditTaskPage, LegendPage, NewTaskPage, SettingsPage } from "./components/Pages";
 import type { PageName } from "./components/Sidebar";
 import { CommandPalette, type Command } from "./components/CommandPalette";
@@ -78,6 +79,8 @@ export function App() {
   const [groupBy, setGroupBy] = useState<GroupBy>(() => (localStorage.getItem(GROUP_KEY) as GroupBy) || "priority");
   const [sortBy, setSortBy] = useState<SortBy>(() => (localStorage.getItem(SORT_KEY) as SortBy) || "priority");
   const [undo, setUndo] = useState<Undo>(null);
+  const [menu, setMenu] = useState<{ id: number; x: number; y: number } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
 
   const listOpts = { group: groupBy, sort: sortBy, query, now };
   const groups = useMemo(() => groupTasks(tasks, view, { group: groupBy, sort: sortBy, query, now }), [tasks, view, groupBy, sortBy, query, now]);
@@ -261,10 +264,10 @@ export function App() {
     return true;
   };
 
-  const changeStatus = async (s: Status, text?: string) => {
-    if (!selected || s === selected.status) return;
-    const id = selected.id;
-    const before = selected.status;
+  const changeStatus = async (s: Status, text?: string, target: Task | null = selected) => {
+    if (!target || s === target.status) return;
+    const id = target.id;
+    const before = target.status;
     const ok = await act(() => api.setStatus(id, s), `${text ?? `#${id} → ${STATUS[s].label}`}. Press u to undo.`);
     if (ok) setUndo({ id, what: `#${id} back to ${STATUS[before].label}`, run: () => api.setStatus(id, before) });
   };
@@ -287,10 +290,22 @@ export function App() {
     void act(undo.run, `Undone: ${undo.what}`);
   };
 
-  const toggleDone = () => {
-    if (!selected) return;
-    if (selected.status === "done") void changeStatus("inbox", `Reopened #${selected.id}`);
-    else void changeStatus("done", `#${selected.id} done`);
+  const toggleDone = (t: Task | null = selected) => {
+    if (!t) return;
+    if (t.status === "done") void changeStatus("inbox", `Reopened #${t.id}`, t);
+    else void changeStatus("done", `#${t.id} done`, t);
+  };
+
+  const deleteTask = async (t: Task) => {
+    const ok = await act(() => api.remove(t.id), `Deleted #${t.id} ${t.title}`);
+    setConfirmDelete(null);
+    if (ok && undo?.id === t.id) setUndo(null);
+  };
+
+  const openMenu = (id: number, x: number, y: number) => {
+    setSelectedId(id);
+    setFocus("list");
+    setMenu({ id, x, y });
   };
 
   const saveEdit = async (e: TaskEdit) => {
@@ -300,9 +315,10 @@ export function App() {
     return act(() => api.edit(id, e), `Saved #${id}`);
   };
 
-  const startEdit = () => {
-    if (!shown) return;
-    setEditing(shown);
+  const startEdit = (t: Task | null = shown) => {
+    if (!t) return;
+    // The loaded detail has every field; fall back to the list's copy.
+    setEditing(detail?.id === t.id ? detail : t);
     setPage("edit");
   };
 
@@ -408,7 +424,7 @@ export function App() {
       setPaletteOpen((o) => !o);
       return;
     }
-    if (paletteOpen) return;
+    if (paletteOpen || menu || confirmDelete) return;
     if (e.metaKey && !e.altKey && !e.ctrlKey) {
       if (k === "=" || k === "+") {
         zoomBy(1);
@@ -421,6 +437,11 @@ export function App() {
         else void refresh().then((l) => l && say("Refreshed"));
       } else if (k === "n" && !fatal) {
         setPage("new");
+      } else if (k === "backspace") {
+        // ⌘⌫ in a text field deletes text, not the task.
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || page !== "list" || !selected) return;
+        setConfirmDelete(selected);
       } else if (k === "b" && e.shiftKey) {
         toggleDetail();
       } else if (k === "b") {
@@ -503,7 +524,7 @@ export function App() {
         undoLast();
         break;
       case "x":
-        toggleDone();
+        toggleDone(selected);
         break;
       case "a":
         startAnswer();
@@ -568,7 +589,12 @@ export function App() {
   const repos = [...new Set([...profiles.map((r) => r.name), ...tasks.map((t) => t.repo).filter((r): r is string => !!r)])].sort();
   const commands: Command[] = [
     { id: "new", label: "New task", keys: "⌘N", run: () => setPage("new") },
-    ...(shown ? [{ id: "edit", label: `Edit #${shown.id}`, keys: "E", run: startEdit }] : []),
+    ...(shown
+      ? [
+          { id: "edit", label: `Edit #${shown.id}`, keys: "E", run: () => startEdit(shown) },
+          { id: "delete", label: `Delete #${shown.id}…`, keys: "⌘⌫", run: () => setConfirmDelete(shown) },
+        ]
+      : []),
     ...VIEWS.map((v, i) => ({ id: `view-${i}`, label: `Go to ${v.name}`, keys: String(i + 1), run: () => changeView(i) })),
     ...GROUPINGS.map((g) => ({
       id: `group-${g.id}`,
@@ -668,6 +694,7 @@ export function App() {
             setSelectedId(id);
             openDetail();
           }}
+          onMenu={openMenu}
         />
       )}
       {showDetail && (
@@ -684,10 +711,10 @@ export function App() {
               setDetailOpen(false);
               setFocus("list");
             }}
-            onEdit={startEdit}
+            onEdit={() => startEdit(shown)}
             onStatus={(s) => void changeStatus(s)}
             onPriority={(p) => void changePriority(p)}
-            onToggleDone={toggleDone}
+            onToggleDone={() => toggleDone(selected)}
             onAnswer={answer}
             onNote={note}
             onJira={openJira}
@@ -704,6 +731,33 @@ export function App() {
         <div className={"flash" + (flash.error ? " error" : "")} role={flash.error ? "alert" : "status"}>
           {flash.text}
         </div>
+      )}
+      {menu &&
+        (() => {
+          const t = tasks.find((x) => x.id === menu.id);
+          if (!t) return null;
+          return (
+            <ContextMenu
+              x={menu.x}
+              y={menu.y}
+              label={`#${t.id} actions`}
+              onClose={() => setMenu(null)}
+              items={[
+                { label: "Edit…", keys: "E", run: () => startEdit(t) },
+                { label: t.status === "done" ? "Reopen" : "Mark done", keys: "X", run: () => toggleDone(t) },
+                { label: "Delete…", keys: "⌘⌫", danger: true, run: () => setConfirmDelete(t) },
+              ]}
+            />
+          );
+        })()}
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete #${confirmDelete.id}?`}
+          body={`“${confirmDelete.title}” and its notes, agent reports and session links will be deleted for good. This can't be undone.`}
+          confirmLabel="Delete task"
+          onConfirm={() => deleteTask(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
       )}
       {paletteOpen && <CommandPalette tasks={tasks} commands={commands} onTask={goToTask} onClose={() => setPaletteOpen(false)} />}
     </div>

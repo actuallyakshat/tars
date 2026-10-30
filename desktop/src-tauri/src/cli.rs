@@ -163,6 +163,10 @@ pub mod args {
         vec!["note".into(), id.to_string(), "--".into(), text.into()]
     }
 
+    pub fn delete(id: i64) -> Vec<String> {
+        vec!["rm".into(), id.to_string()]
+    }
+
     pub fn seen(id: i64) -> Vec<String> {
         vec!["seen".into(), id.to_string()]
     }
@@ -333,6 +337,11 @@ impl Tars {
 
     pub fn remove_repo(&self, name: &str) -> Result<Value> {
         parse_object(&self.run(&args::remove_repo(name))?)
+    }
+
+    /// Deletes a task for good, with its log, reports and session links.
+    pub fn delete(&self, id: i64) -> Result<Value> {
+        parse_object(&self.run(&args::delete(id))?)
     }
 
     pub fn mv(&self, id: i64, status: &str) -> Result<Value> {

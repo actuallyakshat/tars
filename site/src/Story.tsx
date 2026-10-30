@@ -9,7 +9,7 @@ export function Reports() {
       <Reveal>
         <h2 id="reports-title">Read what your agents did, not everything they said</h2>
         <p className="section-lede">
-          Run five agents at once and you get five long terminal threads to scroll through. With tars, each agent
+          Run five agents at once and you get five long terminal threads to scroll through. With Tars, each agent
           finishes by writing a short report on its task: what changed, how it was checked, and what it needs from
           you. The full conversation is one command away if you want it.
         </p>
@@ -26,7 +26,7 @@ export function Reports() {
           </div>
         </Reveal>
         <Reveal className="compare-col" delay={0.12}>
-          <p className="compare-label">In tars</p>
+          <p className="compare-label">In Tars</p>
           <div className="report-card">
             <p className="report-head">
               <span className="report-id">#15</span> Add retry with backoff to webhook sender
@@ -58,7 +58,7 @@ export function NeedsYou() {
           leaves one clear question on the task and moves on.
         </p>
         <p>
-          Open tars and the <strong>Needs you</strong> view lists every open question across all your agents.
+          Open Tars and the <strong>Needs you</strong> view lists every open question across all your agents.
           Answer in a few words, and the next agent that picks up the task reads your answer. When you want the
           full story, copy the <code>claude --resume</code> command and you're back in that exact session.
         </p>
@@ -96,7 +96,7 @@ export function SteerLess() {
           the old CSV format for this customer" only applies to one task.
         </p>
         <p>
-          tars layers your preferences and hands the agent the right mix for the task in front of it. The most
+          Tars layers your preferences and hands the agent the right mix for the task in front of it. The most
           specific one wins, except your team's CLAUDE.md, which always comes first. Repo and personal preferences
           work today; per-ticket decisions, with clashes caught before the work starts, arrive with grilling.
         </p>
@@ -139,7 +139,7 @@ export function NotJira() {
       <Reveal>
         <h2 id="jira-title">Why not just use Jira?</h2>
         <p className="section-lede">
-          Keep using it. Jira tracks the work for your team. tars sits between the ticket and your agent: it holds
+          Keep using it. Jira tracks the work for your team. Tars sits between the ticket and your agent: it holds
           the context the ticket never had, and the results your team doesn't need to read. Mention a ticket key and
           the agent pulls its details in; nothing has to move out of Jira.
         </p>
@@ -150,7 +150,7 @@ export function NotJira() {
             <tr>
               <th scope="col"><span className="visually-hidden">Aspect</span></th>
               <th scope="col">Jira</th>
-              <th scope="col">tars</th>
+              <th scope="col">Tars</th>
             </tr>
           </thead>
           <tbody>
@@ -199,8 +199,8 @@ export function Status() {
   return (
     <section className="section" aria-labelledby="status-title">
       <Reveal>
-        <h2 id="status-title">Where tars is today</h2>
-        <p className="section-lede">tars is young and moving fast. Here's what works now and what's coming next.</p>
+        <h2 id="status-title">Where Tars is today</h2>
+        <p className="section-lede">Tars is young and moving fast. Here's what works now and what's coming next.</p>
       </Reveal>
       <div className="status-grid">
         <Reveal className="status-col">
@@ -220,11 +220,11 @@ export function Status() {
             <li>
               <strong>Grilling:</strong> a relentless interview that settles every open question before a task is
               marked ready, built on{" "}
-              <a href="https://github.com/mattpocock/skills">Matt Pocock's grilling skill</a> and shipped with tars
+              <a href="https://github.com/mattpocock/skills">Matt Pocock's grilling skill</a> and shipped with Tars
               (MIT, credited).
             </li>
             <li>
-              <strong>Learning:</strong> tars notices your corrections and turns them into repo preferences on its
+              <strong>Learning:</strong> Tars notices your corrections and turns them into repo preferences on its
               own, and always tells you when it does.
             </li>
             <li>

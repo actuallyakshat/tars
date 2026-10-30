@@ -119,6 +119,7 @@ export const api = {
   show: (id: number) => invoke<Task>("show_task", { id }),
   add: (task: NewTask) => invoke<Task>("add_task", { task }),
   edit: (id: number, edit: TaskEdit) => invoke<Task>("edit_task", { id, edit }),
+  remove: (id: number) => invoke("delete_task", { id }),
   setStatus: (id: number, status: Status) => invoke<Task[]>("set_status", { id, status }),
   answer: (id: number, text: string) => invoke("answer_task", { id, text }),
   note: (id: number, text: string) => invoke("add_note", { id, text }),

@@ -1,5 +1,67 @@
+import { useEffect, useRef, useState } from "react";
 import type { CliError } from "../api";
 import { Mark } from "../Mark";
+
+// Asks before something that can't be undone. Focus starts on Cancel, so a
+// stray Enter keeps the task; Esc or a click outside also cancels.
+export function ConfirmDialog({
+  title,
+  body,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  onConfirm: () => Promise<unknown>;
+  onCancel: () => void;
+}) {
+  const cancel = useRef<HTMLButtonElement>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => cancel.current?.focus(), []);
+  return (
+    <div className="confirm-backdrop" onMouseDown={() => !busy && onCancel()}>
+      <div
+        className="confirm"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        aria-describedby="confirm-body"
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Escape" && !busy) onCancel();
+          // Keep Tab inside the dialog.
+          if (e.key === "Tab") {
+            const buttons = [...e.currentTarget.querySelectorAll("button")];
+            const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
+            e.preventDefault();
+            buttons[(i + (e.shiftKey ? buttons.length - 1 : 1)) % buttons.length]?.focus();
+          }
+        }}
+      >
+        <h2 id="confirm-title">{title}</h2>
+        <p id="confirm-body">{body}</p>
+        <div className="confirm-actions">
+          <button ref={cancel} className="ghost" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            className="danger"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await onConfirm();
+            }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function CliProblem({ error, onRetry }: { error: CliError; onRetry: () => void }) {
   const title = error.kind === "too_old" ? "Your tars CLI needs an update" : "tars needs its command-line tool";

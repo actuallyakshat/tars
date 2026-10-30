@@ -151,9 +151,9 @@ describe("detail pane", () => {
     expect(d.getByText("#backend")).toBeInTheDocument();
 
     expect(d.getByText("webhook retry")).toBeInTheDocument();
-    await user.click(d.getByRole("button", { name: "Copy resume command" }));
+    await user.click(d.getByRole("button", { name: "Copy command" }));
     expect(b.callsTo("copy_text")).toEqual([{ text: "claude --resume sess-42" }]);
-    await user.click(d.getByRole("button", { name: "Open in Terminal" }));
+    await user.click(d.getByRole("button", { name: "Resume in Terminal" }));
     expect(b.callsTo("open_in_terminal")).toEqual([{ sessionId: "sess-42", launchDir: "/work/billing" }]);
 
     await user.click(d.getByRole("button", { name: "tars/1-webhook-retry" }));
@@ -622,5 +622,51 @@ describe("repos", () => {
     await user.type(screen.getByPlaceholderText("billing-svc"), "x");
     await user.click(screen.getByRole("button", { name: "Add repo" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("full path");
+  });
+});
+
+describe("right-click menu", () => {
+  it("edits from the menu", async () => {
+    fakeBackend();
+    const user = await boot();
+    await user.keyboard("2");
+    await user.pointer({ keys: "[MouseRight]", target: screen.getByTestId("row-3") });
+    const menu = within(screen.getByRole("menu", { name: "#3 actions" }));
+    await user.click(menu.getByRole("menuitem", { name: /Edit/ }));
+    expect(screen.getByRole("main", { name: "Edit #3" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Tidy README");
+  });
+
+  it("deletes only after confirming, and Cancel keeps the task", async () => {
+    const b = fakeBackend();
+    const user = await boot();
+    await user.keyboard("2");
+    await user.pointer({ keys: "[MouseRight]", target: screen.getByTestId("row-3") });
+    await user.click(screen.getByRole("menuitem", { name: /Delete/ }));
+    const dialog = screen.getByRole("alertdialog", { name: "Delete #3?" });
+    expect(dialog).toHaveTextContent("Tidy README");
+    // Focus starts on Cancel, so Enter keeps the task.
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(b.callsTo("delete_task")).toEqual([]);
+
+    // ⌘⌫ asks for the selected task; confirming deletes it.
+    await user.keyboard("{Meta>}{Backspace}{/Meta}");
+    await user.click(within(screen.getByRole("alertdialog", { name: "Delete #3?" })).getByRole("button", { name: "Delete task" }));
+    expect(b.callsTo("delete_task")).toEqual([{ id: 3 }]);
+    await waitFor(() => expect(screen.queryByTestId("row-3")).toBeNull());
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("closes with Esc and leaves ⌘⌫ alone in text fields", async () => {
+    const b = fakeBackend();
+    const user = await boot();
+    await user.pointer({ keys: "[MouseRight]", target: screen.getByTestId("row-1") });
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).toBeNull();
+    await user.keyboard("/ab{Meta>}{Backspace}{/Meta}");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(b.callsTo("delete_task")).toEqual([]);
   });
 });

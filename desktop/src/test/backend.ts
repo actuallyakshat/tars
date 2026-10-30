@@ -180,6 +180,10 @@ export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
         t.tags = tags.length ? tags : undefined;
         return structuredClone(t);
       }
+      case "delete_task":
+        find(args!.id);
+        b.tasks = b.tasks.filter((t) => t.id !== args!.id);
+        return { deleted: [args!.id] };
       case "list_repos":
         return structuredClone(b.repos);
       case "set_repo": {

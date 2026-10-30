@@ -178,6 +178,9 @@ fn reads_and_writes_through_the_real_cli() {
     let err = t.mv(1, "sideways").unwrap_err();
     assert_eq!(err.kind, ErrorKind::Failed);
     assert!(err.message.starts_with("unknown status \"sideways\""), "{}", err.message);
+    t.delete(2).unwrap();
+    assert_eq!(ids(&t.list().unwrap()), vec![1]);
+    assert_eq!(t.delete(2).unwrap_err().kind, ErrorKind::Failed);
     assert_eq!(t.show(99).unwrap_err().message, "task 99: not found");
 }
 

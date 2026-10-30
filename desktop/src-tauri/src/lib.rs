@@ -97,6 +97,11 @@ async fn edit_task(state: State<'_, AppState>, id: i64, edit: TaskEdit) -> Resul
 }
 
 #[tauri::command]
+async fn delete_task(state: State<'_, AppState>, id: i64) -> Result<Value> {
+    with_tars(state, move |t| t.delete(id)).await
+}
+
+#[tauri::command]
 async fn set_status(state: State<'_, AppState>, id: i64, status: String) -> Result<Value> {
     with_tars(state, move |t| if status == "done" { t.done(id) } else { t.mv(id, &status) }).await
 }
@@ -173,6 +178,7 @@ pub fn run() {
             show_task,
             add_task,
             edit_task,
+            delete_task,
             set_status,
             answer_task,
             add_note,

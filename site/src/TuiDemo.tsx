@@ -262,7 +262,7 @@ export function TuiDemo() {
         className="tui"
         tabIndex={0}
         role="application"
-        aria-label="Interactive tars task list demo"
+        aria-label="Interactive Tars task list demo"
         aria-describedby="tui-help"
         onKeyDown={onKey}
       >

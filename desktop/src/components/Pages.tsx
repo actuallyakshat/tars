@@ -172,7 +172,7 @@ function TaskForm({
             Cancel
           </button>
           <button type="submit" className="primary" disabled={!t.title.trim() || busy}>
-            {submitLabel} <kbd>⌘↵</kbd>
+            {submitLabel} <kbd aria-hidden="true">⌘↩</kbd>
           </button>
         </div>
       </form>
@@ -489,6 +489,7 @@ const SHORTCUTS: [string, string][] = [
   ["l", "Show or hide activity"],
   ["o", "Copy the resume command"],
   ["e", "Edit the selected task"],
+  ["⌘⌫", "Delete the selected task (asks first)"],
   ["⌘K", "Search tasks and commands"],
   ["⌘N", "New task"],
   ["⌘B", "Show or hide the sidebar"],

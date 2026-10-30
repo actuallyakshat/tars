@@ -21,9 +21,9 @@ export function App() {
     <>
       <a className="skip" href="#main">Skip to content</a>
       <header className="nav">
-        <a className="logo" href="#top" aria-label="tars home">
+        <a className="logo" href="#top" aria-label="Tars home">
           <Mark size={24} />
-          <span>tars</span>
+          <span>Tars</span>
         </a>
         <nav aria-label="Primary">
           <a href="#reports">How it works</a>
@@ -52,14 +52,14 @@ export function App() {
             </motion.div>
             <motion.h1 variants={heroItem}>Stay on top of every agent, without reading every transcript</motion.h1>
             <motion.p className="lede" variants={heroItem}>
-              tars is the task list you and Claude share. Agents report back in a few lines: what they did, how they
+              Tars is the task list you and Claude share. Agents report back in a few lines: what they did, how they
               checked it, what they need from you. Questions wait in one place, every session is a command away, and
-              you steer less because tars remembers how you want things done.
+              you steer less because Tars remembers how you want things done.
             </motion.p>
             <motion.div className="ctas" variants={heroItem}>
               <motion.a className="btn btn-primary" href="#install" {...press}>
                 <PromptIcon />
-                Install tars
+                Install Tars
               </motion.a>
               <motion.a className="btn btn-quiet" href="#reports" {...press}>
                 See how it works
@@ -159,7 +159,7 @@ export function App() {
             <div className="ctas">
               <motion.a className="btn btn-primary" href="#install" {...press}>
                 <PromptIcon />
-                Install tars
+                Install Tars
               </motion.a>
               <motion.a className="btn btn-quiet" href={`https://github.com/${REPO}`} {...press}>
                 <GitHubIcon />
@@ -171,7 +171,7 @@ export function App() {
       </main>
 
       <footer className="footer">
-        <p>tars is free and open source.</p>
+        <p>Tars is free and open source.</p>
         <a href={`https://github.com/${REPO}`}>GitHub</a>
       </footer>
     </>

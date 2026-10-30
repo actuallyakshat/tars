@@ -17,6 +17,7 @@ interface Props {
   onSort: (s: SortBy) => void;
   onSelect: (id: number) => void;
   onOpen: (id: number) => void;
+  onMenu: (id: number, x: number, y: number) => void;
 }
 
 function emptyMessage(view: number, totalOpen: number, query: string) {
@@ -26,7 +27,7 @@ function emptyMessage(view: number, totalOpen: number, query: string) {
   return "Nothing here.";
 }
 
-export function TaskList({ groups, view, totalOpen, selectedId, now, query, group, sort, onQuery, onGroup, onSort, onSelect, onOpen }: Props) {
+export function TaskList({ groups, view, totalOpen, selectedId, now, query, group, sort, onQuery, onGroup, onSort, onSelect, onOpen, onMenu }: Props) {
   const selRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
     selRef.current?.scrollIntoView?.({ block: "nearest" });
@@ -63,6 +64,7 @@ export function TaskList({ groups, view, totalOpen, selectedId, now, query, grou
                     ref={t.id === selectedId ? selRef : undefined}
                     onSelect={onSelect}
                     onOpen={onOpen}
+                    onMenu={onMenu}
                   />
                 ))}
               </ul>
@@ -81,9 +83,10 @@ interface RowProps {
   ref?: React.Ref<HTMLLIElement>;
   onSelect: (id: number) => void;
   onOpen: (id: number) => void;
+  onMenu: (id: number, x: number, y: number) => void;
 }
 
-function Row({ t, now, selected, ref, onSelect, onOpen }: RowProps) {
+function Row({ t, now, selected, ref, onSelect, onOpen, onMenu }: RowProps) {
   const due = t.status === "done" ? { text: ago(t.done_at, now), tone: "muted" } : dueText(t.due, now);
   const cls = ["row", `p${t.priority}`, `s-${t.status}`];
   if (selected) cls.push("sel");
@@ -97,6 +100,10 @@ function Row({ t, now, selected, ref, onSelect, onOpen }: RowProps) {
       className={cls.join(" ")}
       onClick={() => onSelect(t.id)}
       onDoubleClick={() => onOpen(t.id)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onMenu(t.id, e.clientX, e.clientY);
+      }}
     >
       <span className="c-mark">
         {t.needs_you ? (
