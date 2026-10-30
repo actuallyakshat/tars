@@ -109,6 +109,10 @@ Precedence: the repo's **CLAUDE.md / AGENTS.md** > tars repo profile > personal 
 3. At night, run `/tars:sweep jira only --yes`.
 4. In the morning, run `/tars:brief`, review the branches, and push the good ones yourself.
 
+## The macOS app
+
+`desktop/` holds a native macOS app (Tauri) for when you'd rather click than type: the same views with Needs you first, the task list, and a detail pane with the agent's report, the linked Claude sessions (copy the resume command or open it in Terminal), and the activity log. You can answer questions, add notes and tasks, and change status from it. It reads and writes only through the `tars` CLI, so it needs a build that has `tars report`. See [desktop/README.md](desktop/README.md) to run or build it.
+
 ## Data
 
 Everything lives in one SQLite file at `~/.local/share/tars/tars.db`. Override the location with `$TARS_HOME` or `--db`. Parallel agents can write to it safely (WAL mode).
