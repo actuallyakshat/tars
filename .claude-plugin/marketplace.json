@@ -1,14 +1,15 @@
 {
   "name": "tars",
   "owner": {
-    "name": "Akshat Dubey"
+    "name": "Akshat Dubey",
+    "url": "https://github.com/actuallyakshat"
   },
   "description": "A task list you and your coding agent share.",
   "plugins": [
     {
       "name": "tars",
       "source": "./plugin",
-      "description": "Agent interface for the tars CLI: /tars:tars, /tars:sweep, /tars:brief, /tars:park"
+      "description": "Your agent keeps your task list: /tars:tars, /tars:sweep, /tars:brief, /tars:park. Needs the tars CLI (brew install actuallyakshat/tap/tars)."
     }
   ]
 }

@@ -1,4 +1,4 @@
-module github.com/akshat-dubey/tars
+module github.com/actuallyakshat/tars
 
 go 1.26.0
 

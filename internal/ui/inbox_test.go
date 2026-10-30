@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 
-	"github.com/akshat-dubey/tars/internal/store"
+	"github.com/actuallyakshat/tars/internal/store"
 )
 
 // fixedNow is a Friday; due dates in tests are relative to it.

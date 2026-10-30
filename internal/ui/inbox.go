@@ -13,8 +13,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 
-	"github.com/akshat-dubey/tars/internal/parse"
-	"github.com/akshat-dubey/tars/internal/store"
+	"github.com/actuallyakshat/tars/internal/parse"
+	"github.com/actuallyakshat/tars/internal/store"
 )
 
 // splitMinWidth is the terminal width at which the detail opens beside the list.

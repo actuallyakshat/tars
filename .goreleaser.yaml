@@ -1,20 +1,47 @@
 version: 2
 project_name: tars
+
+before:
+  hooks:
+    - go mod tidy
+
 builds:
   - main: ./cmd/tars
+    binary: tars
     env: [CGO_ENABLED=0] # modernc sqlite is pure Go, so cross-compiling just works
     goos: [darwin, linux, windows]
     goarch: [amd64, arm64]
-    ldflags: ["-s -w -X github.com/akshat-dubey/tars/internal/cli.Version={{.Version}}"]
+    ldflags: ["-s -w -X github.com/actuallyakshat/tars/internal/cli.Version={{.Version}}"]
+
 archives:
   - formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
-brews:
-  - repository:
-      owner: akshat-dubey
+    files: [LICENSE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^chore:", "^site:"]
+
+homebrew_casks:
+  - name: tars
+    repository:
+      owner: actuallyakshat
       name: homebrew-tap
-    directory: Formula
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/actuallyakshat/tars
     description: "A task list you and your coding agent share"
-    test: system "#{bin}/tars", "--version"
+    license: MIT
+    binaries: [tars]
+    # The binaries aren't Apple-notarized; clear quarantine so macOS lets them run.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/tars"]
+          end

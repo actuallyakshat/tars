@@ -2,6 +2,18 @@
   "name": "tars",
   "version": "0.1.0",
   "description": "Your agent keeps your task list, triages raw notes into ready work, and sweeps ready tasks into tested branches. Only ever runs when you invoke it.",
-  "author": { "name": "Akshat Dubey" },
-  "keywords": ["tasks", "todo", "jira", "worktrees", "productivity"]
+  "author": {
+    "name": "Akshat Dubey",
+    "url": "https://github.com/actuallyakshat"
+  },
+  "keywords": [
+    "tasks",
+    "todo",
+    "jira",
+    "worktrees",
+    "productivity"
+  ],
+  "homepage": "https://github.com/actuallyakshat/tars",
+  "repository": "https://github.com/actuallyakshat/tars",
+  "license": "MIT"
 }

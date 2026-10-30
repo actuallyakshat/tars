@@ -6,7 +6,7 @@ import { Mark } from "./Mark";
 import { Reveal, press } from "./Reveal";
 
 // Update when the repo is published under its final GitHub owner.
-const REPO = "akshat-dubey/tars";
+const REPO = "actuallyakshat/tars";
 
 // The hero's load-in: one short staggered sequence.
 const heroItem = {

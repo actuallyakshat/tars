@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akshat-dubey/tars/internal/store"
+	"github.com/actuallyakshat/tars/internal/store"
 )
 
 type env struct {

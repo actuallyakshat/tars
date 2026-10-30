@@ -17,22 +17,22 @@ The agent only touches the ledger when you invoke it. The plugin's skills can't 
 
 ## Install
 
-> The Homebrew tap, GitHub Releases and `/plugin marketplace add` work once the repo is published and the first release is cut. Until then, build from source and add the plugin from a local path: `/plugin marketplace add /path/to/tars`.
-
-**CLI.** Download a single static binary. Users don't need Go installed.
+**1. The CLI.** A single binary for macOS, Linux and Windows. You don't need Go installed.
 
 ```bash
-brew install akshat-dubey/tap/tars        # macOS / Linux
-# or grab a binary from GitHub Releases, or from source:
-go install github.com/akshat-dubey/tars/cmd/tars@latest
+brew install actuallyakshat/tap/tars
 ```
 
-**Claude Code plugin**
+Or download a binary from [GitHub Releases](https://github.com/actuallyakshat/tars/releases), or build from source with `go install github.com/actuallyakshat/tars/cmd/tars@latest`.
+
+**2. The Claude Code plugin.** Run these inside Claude Code:
 
 ```
-/plugin marketplace add akshat-dubey/tars
+/plugin marketplace add actuallyakshat/tars
 /plugin install tars@tars
 ```
+
+To get updates later, run `/plugin marketplace update tars`.
 
 ## The CLI
 
@@ -113,3 +113,7 @@ go test ./...
 go run ./cmd/tars
 goreleaser release --snapshot --clean   # cross-platform binaries in dist/
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).

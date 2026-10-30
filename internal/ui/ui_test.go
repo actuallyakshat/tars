@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/akshat-dubey/tars/internal/store"
+	"github.com/actuallyakshat/tars/internal/store"
 )
 
 func TestRowFitsWidth(t *testing.T) {

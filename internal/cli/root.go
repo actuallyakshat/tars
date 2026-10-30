@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/akshat-dubey/tars/internal/store"
-	"github.com/akshat-dubey/tars/internal/ui"
+	"github.com/actuallyakshat/tars/internal/store"
+	"github.com/actuallyakshat/tars/internal/ui"
 )
 
 var Version = "dev"

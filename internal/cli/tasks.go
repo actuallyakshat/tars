@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/akshat-dubey/tars/internal/parse"
-	"github.com/akshat-dubey/tars/internal/store"
-	"github.com/akshat-dubey/tars/internal/ui"
+	"github.com/actuallyakshat/tars/internal/parse"
+	"github.com/actuallyakshat/tars/internal/store"
+	"github.com/actuallyakshat/tars/internal/ui"
 )
 
 var statusAliases = map[string]string{
