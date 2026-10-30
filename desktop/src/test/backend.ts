@@ -145,6 +145,11 @@ export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
         t.log = [...(t.log ?? []), { id: 99, at: new Date().toISOString(), author: "user", kind: "note", text: args!.text as string }];
         return { id: t.id, logged: true };
       }
+      case "mark_seen": {
+        const t = find(args!.id);
+        t.unread = false;
+        return { seen: [t.id] };
+      }
       case "add_task": {
         const input = args!.task as { title: string; priority?: string };
         const t: Task = {

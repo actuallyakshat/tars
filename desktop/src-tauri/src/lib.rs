@@ -107,6 +107,11 @@ async fn add_note(state: State<'_, AppState>, id: i64, text: String) -> Result<V
 }
 
 #[tauri::command]
+async fn mark_seen(state: State<'_, AppState>, id: i64) -> Result<Value> {
+    with_tars(state, move |t| t.seen(id)).await
+}
+
+#[tauri::command]
 async fn copy_text(text: String) -> Result<()> {
     blocking(move || mac::copy_text(&text)).await
 }
@@ -138,6 +143,7 @@ pub fn run() {
             set_status,
             answer_task,
             add_note,
+            mark_seen,
             copy_text,
             open_in_terminal,
             reveal_path,

@@ -52,7 +52,7 @@ describe("sidebar", () => {
 
 describe("task list", () => {
   it("groups by priority and shows the markers", async () => {
-    fakeBackend();
+    const b = fakeBackend();
     const user = await boot();
     await user.keyboard("2");
     const groups = screen.getAllByRole("listbox").map((l) => l.getAttribute("aria-label"));
@@ -60,7 +60,8 @@ describe("task list", () => {
 
     const asking = screen.getByTestId("row-1");
     expect(asking).toHaveTextContent("?");
-    expect(asking).toHaveClass("unread");
+    // #1 starts selected, and the detail pane counts as looking at it.
+    await waitFor(() => expect(b.callsTo("mark_seen")).toEqual([{ id: 1 }]));
     expect(asking).toHaveTextContent("#1");
     expect(asking).toHaveTextContent("BILL-881");
     expect(asking).toHaveTextContent("billing-svc");
@@ -73,6 +74,26 @@ describe("task list", () => {
     expect(screen.getByTestId("row-2")).not.toHaveClass("unread");
     expect(screen.getByTestId("row-4")).toHaveTextContent("2d late");
     expect(screen.queryByTestId("row-5")).toBeNull(); // done stays out of Open
+  });
+
+  it("marks a task seen when it is selected, clearing its ●", async () => {
+    const b = fakeBackend();
+    const user = await boot();
+    await user.keyboard("2");
+    const row = screen.getByTestId("row-3");
+    expect(row).toHaveTextContent("●");
+    expect(row).toHaveClass("unread");
+
+    await user.click(row);
+    await waitFor(() => expect(b.callsTo("mark_seen")).toContainEqual({ id: 3 }));
+    await waitFor(() => expect(screen.getByTestId("row-3")).not.toHaveClass("unread"));
+    expect(screen.getByTestId("row-3")).not.toHaveTextContent("●");
+
+    // Selecting a task that was already seen doesn't call the CLI again.
+    const before = b.callsTo("mark_seen").length;
+    await user.click(screen.getByTestId("row-2"));
+    await waitFor(() => expect(screen.getByTestId("row-2")).toHaveAttribute("aria-selected", "true"));
+    expect(b.callsTo("mark_seen")).toHaveLength(before);
   });
 
   it("moves with j/k and keeps the selection across refreshes", async () => {

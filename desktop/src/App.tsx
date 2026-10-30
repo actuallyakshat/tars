@@ -128,7 +128,17 @@ export function App() {
     if (selectedId === null) return;
     const id = selectedId;
     api.show(id).then(
-      (full) => selRef.current === id && setDetail(full),
+      (full) => {
+        if (selRef.current !== id) return;
+        setDetail(full);
+        // Looking at a task is what "seen" means: clear the ● right away.
+        if (full.unread) {
+          api.seen(id).then(() => {
+            setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, unread: false } : t)));
+            setDetail((d) => (d && d.id === id ? { ...d, unread: false } : d));
+          }, fail);
+        }
+      },
       (e) => fail(e),
     );
   }, [selectedId, fail]);

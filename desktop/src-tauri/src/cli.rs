@@ -148,6 +148,10 @@ pub mod args {
         vec!["note".into(), id.to_string(), "--".into(), text.into()]
     }
 
+    pub fn seen(id: i64) -> Vec<String> {
+        vec!["seen".into(), id.to_string()]
+    }
+
     pub fn add(t: &NewTask) -> Vec<String> {
         let mut a = vec!["add".to_string()];
         for (flag, v) in [
@@ -260,6 +264,11 @@ impl Tars {
 
     pub fn note(&self, id: i64, text: &str) -> Result<Value> {
         parse_object(&self.run(&args::note(id, text))?)
+    }
+
+    /// Clears the ● for agent updates once the user has looked at the task.
+    pub fn seen(&self, id: i64) -> Result<Value> {
+        parse_object(&self.run(&args::seen(id))?)
     }
 }
 
@@ -437,6 +446,7 @@ mod tests {
             ["--json", "--db", "/tmp/x/tars.db", "note", "4", "--", "-v flag breaks it"].map(OsString::from)
         );
         assert_eq!(args::answer(7, "billing"), ["answer", "7", "--", "billing"]);
+        assert_eq!(args::seen(9), ["seen", "9"]);
         assert_eq!(args::mv(3, "in-review"), ["mv", "3", "in-review"]);
         assert_eq!(args::done(3), ["done", "3"]);
         assert_eq!(args::show(12), ["show", "12"]);

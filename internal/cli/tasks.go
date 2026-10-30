@@ -485,3 +485,33 @@ func rmCmd(a *app) *cobra.Command {
 		},
 	}
 }
+
+func seenCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "seen <id>…",
+		Short: "Mark task(s) as seen, clearing the ● for agent updates",
+		Long: `Mark tasks as seen by the user, which clears the ● shown when an agent has
+changed a task since the user last looked. The terminal and desktop apps
+call this when a task is opened. Agents shouldn't call it.`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var ids []int64
+			for _, raw := range args {
+				id, err := parseID(raw)
+				if err != nil {
+					return err
+				}
+				if _, err := a.st.GetTask(id); err != nil {
+					return err
+				}
+				if err := a.st.MarkSeen(id); err != nil {
+					return err
+				}
+				ids = append(ids, id)
+			}
+			return a.emit(map[string]any{"seen": ids}, func() string {
+				return ui.Success(fmt.Sprintf("Marked %d task(s) as seen", len(ids))) + "\n"
+			})
+		},
+	}
+}

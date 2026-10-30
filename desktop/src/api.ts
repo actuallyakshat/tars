@@ -103,6 +103,7 @@ export const api = {
   setStatus: (id: number, status: Status) => invoke<Task[]>("set_status", { id, status }),
   answer: (id: number, text: string) => invoke("answer_task", { id, text }),
   note: (id: number, text: string) => invoke("add_note", { id, text }),
+  seen: (id: number) => invoke("mark_seen", { id }),
   copy: (text: string) => invoke<void>("copy_text", { text }),
   openInTerminal: (sessionId: string, launchDir?: string) =>
     invoke<void>("open_in_terminal", { sessionId, launchDir: launchDir || null }),

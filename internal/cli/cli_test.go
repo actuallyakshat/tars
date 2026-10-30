@@ -388,3 +388,23 @@ func TestReportAnswerAndSessions(t *testing.T) {
 		t.Fatalf("no session expected: %+v", tk.Sessions)
 	}
 }
+
+func TestSeenClearsUnread(t *testing.T) {
+	e := newEnv(t)
+	e.ok("add", "one")
+	e.ok("add", "two")
+	e.ok("note", "1", "--by", "agent", "worked on it")
+	e.ok("note", "2", "--by", "agent", "this too")
+	if !e.task("1").Unread || !e.task("2").Unread {
+		t.Fatal("agent notes should mark tasks unread")
+	}
+	out := decode[map[string][]int64](t, e.ok("seen", "1", "#2", "--json"))
+	if len(out["seen"]) != 2 {
+		t.Fatalf("seen output: %+v", out)
+	}
+	if e.task("1").Unread || e.task("2").Unread {
+		t.Fatal("seen should clear unread")
+	}
+	e.fails("seen", "99")
+	e.fails("seen")
+}
