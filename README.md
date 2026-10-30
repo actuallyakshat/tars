@@ -20,7 +20,9 @@ The agent only touches the ledger when you invoke it. The plugin's skills can't 
 **1. The CLI.** A single binary for macOS, Linux and Windows. You don't need Go installed.
 
 ```bash
-brew install actuallyakshat/tap/tars
+brew tap actuallyakshat/tap
+brew trust --cask actuallyakshat/tap/tars   # Homebrew requires trusting third-party casks
+brew install --cask tars
 ```
 
 Or download a binary from [GitHub Releases](https://github.com/actuallyakshat/tars/releases), or build from source with `go install github.com/actuallyakshat/tars/cmd/tars@latest`.
@@ -111,6 +113,8 @@ Everything lives in one SQLite file at `~/.local/share/tars/tars.db`. Override t
 ```bash
 go test ./...
 go run ./cmd/tars
+go install ./cmd/tars                   # local build into your Go bin directory
+scripts/remove-dev-binary.sh            # remove it again, back to the Homebrew tars
 goreleaser release --snapshot --clean   # cross-platform binaries in dist/
 ```
 

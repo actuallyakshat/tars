@@ -149,7 +149,9 @@ export function App() {
             <Reveal as="li" delay={0.00}>
               <h3>Install the CLI</h3>
               <p>One small binary. You don't need Go or anything else installed.</p>
-              <Command text={`brew install ${REPO.split("/")[0]}/tap/tars`} />
+              <Command text={`brew tap ${REPO.split("/")[0]}/tap`} />
+              <Command text={`brew trust --cask ${REPO.split("/")[0]}/tap/tars`} />
+              <Command text="brew install --cask tars" />
               <p className="alt">
                 Or with Go: <code>go install github.com/{REPO}/cmd/tars@latest</code>
               </p>

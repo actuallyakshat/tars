@@ -9,7 +9,7 @@
     {
       "name": "tars",
       "source": "./plugin",
-      "description": "Your agent keeps your task list: /tars:tars, /tars:sweep, /tars:brief, /tars:park. Needs the tars CLI (brew install actuallyakshat/tap/tars)."
+      "description": "Your agent keeps your task list: /tars:tars, /tars:sweep, /tars:brief, /tars:park. Needs the tars CLI; see the README to install it with Homebrew."
     }
   ]
 }
