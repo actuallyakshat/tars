@@ -74,7 +74,7 @@ const steps: Step[] = [
         {"    "}committed 7be03d1 on tars/9-audit-pagination <span className="t-review">→ in review</span>{"\n\n"}
         <span className="t-id">#12</span> Fix CSV export timeout{"\n"}
         {"    "}<span className="t-warn">needs you:</span> should progress show in the UI or only in logs?{"\n"}
-        {"    "}<span className="t-dim">left a question in your brief, moved on</span>
+        {"    "}<span className="t-dim">left one question in Needs you and moved on</span>
       </pre>
     ),
   },

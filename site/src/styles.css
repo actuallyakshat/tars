@@ -467,6 +467,19 @@ code {
   color: var(--t-muted);
 }
 
+.c-ask {
+  color: var(--s-progress);
+  font-weight: 600;
+}
+
+.tui-report dd {
+  color: var(--t-text);
+}
+
+.tui-indent-label {
+  padding-left: 10ch;
+}
+
 .c-waiting {
   color: var(--s-blocked);
 }
@@ -1145,4 +1158,325 @@ code {
     transform: none;
   }
 
+}
+
+/* ---------- story sections ---------- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* transcript vs report */
+
+.compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1.25rem, 3vw, 2rem);
+  margin-top: clamp(2rem, 5vw, 3rem);
+  align-items: start;
+}
+
+.compare-label {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
+/* The transcript fades out: there's always more of it than anyone reads. */
+.transcript {
+  height: 19rem;
+  overflow: hidden;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  mask-image: linear-gradient(180deg, #000 45%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 45%, transparent 100%);
+}
+
+.transcript p + p {
+  margin-top: 0.8rem;
+}
+
+.report-card {
+  padding: 1.15rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px -18px rgb(24 24 27 / 0.25);
+}
+
+.report-head {
+  font-weight: 550;
+  margin-bottom: 0.9rem;
+}
+
+.report-id {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 400;
+  margin-right: 0.35rem;
+}
+
+.report-card dl {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  row-gap: 0.55rem;
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.report-card dt {
+  color: var(--muted);
+}
+
+.report-card dd {
+  margin: 0;
+}
+
+.report-card .ask {
+  color: #a36a00;
+  font-weight: 500;
+}
+
+/* two-column copy + visual */
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: center;
+}
+
+.split-copy {
+  max-width: 30rem;
+}
+
+.split-copy p {
+  margin-top: 1rem;
+  color: var(--ink-2);
+}
+
+.split-copy h2 + p {
+  margin-top: 1.25rem;
+}
+
+.split-copy strong {
+  font-weight: 550;
+  color: var(--ink);
+}
+
+/* needs-you list */
+
+.qa {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.qa li {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  column-gap: 0.5rem;
+  row-gap: 0.25rem;
+  padding: 0.95rem 1.1rem;
+}
+
+.qa li + li {
+  border-top: 1px solid var(--line);
+}
+
+.qa-id {
+  grid-row: span 2;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.qa-q {
+  font-size: 0.9375rem;
+}
+
+.qa-a {
+  font-size: 0.875rem;
+  color: #2e8b47;
+}
+
+.qa-a::before {
+  content: "↳ ";
+  color: var(--muted);
+}
+
+.qa-a.pending {
+  color: #a36a00;
+}
+
+/* preference layers */
+
+.layers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.layers li {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.layer-name {
+  font-weight: 550;
+}
+
+.layer-note {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.layers .layer-ticket {
+  border-color: var(--ink);
+  box-shadow: 0 8px 24px -14px rgb(24 24 27 / 0.3);
+}
+
+/* jira comparison */
+
+.versus {
+  width: 100%;
+  max-width: 52rem;
+  margin-top: clamp(2rem, 5vw, 3rem);
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.versus th,
+.versus td {
+  text-align: left;
+  padding: 0.8rem 1rem 0.8rem 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.versus thead th {
+  font-weight: 550;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.versus tbody th {
+  font-weight: 500;
+  width: 32%;
+}
+
+.versus td {
+  color: var(--ink-2);
+}
+
+.versus td:last-child {
+  color: var(--ink);
+}
+
+/* habits */
+
+.habits {
+  list-style: none;
+  counter-reset: habit;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 2rem clamp(1.5rem, 3vw, 2.5rem);
+  margin: clamp(2rem, 5vw, 3rem) 0 0;
+  padding: 0;
+}
+
+.habits li {
+  counter-increment: habit;
+}
+
+.habits li::before {
+  content: counter(habit);
+  display: block;
+  font-family: var(--serif);
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--muted);
+  margin-bottom: 0.7rem;
+}
+
+.habits h3 {
+  margin-bottom: 0.35rem;
+}
+
+.habits p {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+/* status */
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1.5rem, 4vw, 3rem);
+  margin-top: clamp(2rem, 5vw, 3rem);
+}
+
+.status-col h3 {
+  margin-bottom: 0.75rem;
+}
+
+.status-col ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+}
+
+.status-col li + li {
+  margin-top: 0.55rem;
+}
+
+.status-col strong {
+  font-weight: 550;
+  color: var(--ink);
+}
+
+.status-next {
+  padding: 1.25rem 1.4rem;
+  border: 1px dashed #cfcfd5;
+  border-radius: 12px;
+}
+
+@media (max-width: 860px) {
+  .compare,
+  .split,
+  .status-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .layers li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.2rem;
+  }
 }

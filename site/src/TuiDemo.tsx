@@ -17,6 +17,8 @@ type Task = {
   body?: string;
   criteria?: string[];
   branch?: string;
+  report?: { done: string; verified?: string; needsYou?: string; next?: string; ago: string };
+  session?: { name: string; id: string };
   log: { who: "you" | "agent"; kind: string; text: string; ago: string }[];
 };
 
@@ -26,16 +28,31 @@ const initialTasks: Task[] = [
     jira: "BILL-881", repo: "billing-svc", when: "2d late", late: true, branch: "tars/12-csv-export",
     body: "Exports over 200k rows time out after 30s. Acme hit it twice this week.",
     criteria: ["1M rows export in under 30s", "Progress is shown while exporting"],
+    report: {
+      done: "Batched account lookups; export of 1M rows now takes 41s.",
+      verified: "make test: 198 passed",
+      next: "Stream rows instead of buffering to get under 30s",
+      ago: "3h ago",
+    },
+    session: { name: "csv export timeout", id: "4be1c9d0" },
     log: [
       { who: "you", kind: "note", text: "Root cause: N+1 query in the exporter.", ago: "yesterday" },
       { who: "agent", kind: "park", text: "Batched the account lookups. Next: stream rows instead of buffering.", ago: "3h ago" },
     ],
   },
   {
-    id: 15, title: "Add retry with backoff to webhook sender", status: "ready", priority: 1,
+    id: 15, title: "Add retry with backoff to webhook sender", status: "blocked", priority: 1,
     jira: "BILL-902", repo: "billing-svc", when: "today",
     body: "Webhook deliveries fail permanently on a single 503.",
     criteria: ["Retries 5 times with exponential backoff", "Gives up and alerts after the last retry"],
+    waiting: "you",
+    report: {
+      done: "Exponential backoff, 5 tries. Committed a41c9e2 on tars/15-webhook-retry.",
+      verified: "make test: 212 passed (6 new)",
+      needsYou: "Alert #oncall or #billing-alerts after the last retry?",
+      ago: "40m ago",
+    },
+    session: { name: "webhook retry", id: "8f3c21aa" },
     log: [{ who: "agent", kind: "triage", text: "Pulled details from BILL-902 and drafted criteria. You confirmed them.", ago: "1d ago" }],
   },
   {
@@ -57,7 +74,10 @@ const initialTasks: Task[] = [
   { id: 7, title: "Upgrade Go to 1.27", status: "done", priority: 2, when: "2d ago", log: [] },
 ];
 
+const needsYou = (t: Task) => !!t.report?.needsYou && t.status !== "done";
+
 const views: { name: string; has: (t: Task) => boolean }[] = [
+  { name: "Needs you", has: needsYou },
   { name: "Open", has: (t) => t.status !== "done" },
   { name: "Inbox", has: (t) => t.status === "inbox" },
   { name: "Ready", has: (t) => t.status === "ready" },
@@ -91,7 +111,7 @@ const swap = {
 
 export function TuiDemo() {
   const [tasks, setTasks] = useState(initialTasks);
-  const [view, setView] = useState(0);
+  const [view, setView] = useState(1); // Open; "Needs you" sits first in the bar
   const [cursor, setCursor] = useState(0);
   const [open, setOpen] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -109,7 +129,14 @@ export function TuiDemo() {
           t.id === 9
             ? {
                 ...t, status: "in-review", unread: true,
-                log: [...t.log, { who: "agent", kind: "sweep", text: "Cursor pagination done. 14 tests added, all green. Committed on tars/9-audit-pagination.", ago: "just now" }],
+                report: {
+                  done: "Cursor pagination, page size 100. Committed 7be03d1 on tars/9-audit-pagination.",
+                  verified: "npm test: 388 passed (14 new)",
+                  next: "Ready for your review",
+                  ago: "just now",
+                },
+                session: { name: "audit log pagination", id: "c71d09e5" },
+                log: [...t.log, { who: "agent", kind: "report", text: "Reported: cursor pagination, 388 tests passed.", ago: "just now" }],
               }
             : t,
         ),
@@ -202,7 +229,7 @@ export function TuiDemo() {
         } else say("Nothing to undo");
         return true;
     }
-    if (/^[1-6]$/.test(key)) {
+    if (/^[1-7]$/.test(key)) {
       switchView(Number(key) - 1);
       return true;
     }
@@ -224,7 +251,7 @@ export function TuiDemo() {
   });
 
   const counts = views.map((v) => tasks.filter(v.has).length);
-  const unread = views.map((v, i) => i !== 5 && tasks.some((t) => v.has(t) && t.unread));
+  const unread = views.map((v, i) => i !== views.length - 1 && tasks.some((t) => v.has(t) && t.unread));
 
   return (
     <figure className="tui-wrap">
@@ -323,9 +350,10 @@ export function TuiDemo() {
                       >
                         {r === selected && <motion.span layoutId="selection" className="tui-selbg" transition={glide} />}
                         <span className="c-bar">{r === selected ? "▌" : ""}</span>
-                        <span className="c-dot">
+                        <span className={needsYou(r) ? "c-dot c-ask" : "c-dot"}>
+                          {needsYou(r) && "?"}
                           <AnimatePresence>
-                            {r.unread && (
+                            {r.unread && !needsYou(r) && (
                               <motion.span
                                 key="dot"
                                 style={{ display: "inline-block" }}
@@ -373,7 +401,7 @@ export function TuiDemo() {
           ) : open ? (
             <Hints keys={[["j/k", "next/prev"], ["l", "activity"], ["x", "done"], ["esc", "back"]]} />
           ) : (
-            <Hints keys={[["↑↓", "move"], ["⏎", "open"], ["x", "done"], ["u", "undo"], ["1–6", "view"]]} />
+            <Hints keys={[["↑↓", "move"], ["⏎", "open"], ["x", "done"], ["u", "undo"], ["1–7", "view"]]} />
           )}
         </div>
       </div>
@@ -382,8 +410,8 @@ export function TuiDemo() {
       <figcaption id="tui-help" className="tui-caption">
         <span>
           {agentDone
-            ? "See the ● on #9? The agent just finished it and moved it to review. Open it with ↓ then enter."
-            : "This works like the real list. Click it, then press j, k, enter, x, u, or 1–6 to switch views."}
+            ? "The agent just finished #9 and left a report (see the ●). Select it and press enter to read it."
+            : "This works like the real list. Click it, then press j, k, enter, x, u, or 1–7 to switch views. #15 is waiting on you (?)."}
         </span>
         <span className="tui-keys" aria-label="On-screen keys">
           {[["k", "↑"], ["j", "↓"], ["Enter", "enter"], ["x", "x"], ["u", "u"], ["Tab", "tab"]].map(([k, label]) => (
@@ -418,6 +446,19 @@ function Detail({ task, showLog }: { task: Task; showLog: boolean }) {
         {task.priority !== 2 && <span className={`p${task.priority}`}> {prioMark[task.priority]} {prioName[task.priority]}</span>}
       </p>
       <p className="tui-dtitle">{task.title}</p>
+      {task.report && (
+        <>
+          <p className="tui-section">REPORT <span className="tui-muted">{task.report.ago}</span></p>
+          <dl className="tui-fields tui-report">
+            <dt>done</dt><dd>{task.report.done}</dd>
+            {task.report.verified && (<><dt>verified</dt><dd>{task.report.verified}</dd></>)}
+            {task.report.needsYou && (<><dt>needs you</dt><dd className="c-ask">{task.report.needsYou}</dd></>)}
+            {task.report.next && (<><dt>next</dt><dd>{task.report.next}</dd></>)}
+          </dl>
+          {task.report.needsYou && <p className="tui-muted tui-indent-label">press <span className="tui-key">a</span> to answer</p>}
+          <p className="tui-gap" />
+        </>
+      )}
       <dl className="tui-fields">
         {task.jira && (<><dt>jira</dt><dd className="c-jira">{task.jira}</dd></>)}
         {task.repo && (<><dt>repo</dt><dd>{task.repo}</dd></>)}
@@ -430,6 +471,13 @@ function Detail({ task, showLog }: { task: Task; showLog: boolean }) {
         <>
           <p className="tui-section">ACCEPTANCE CRITERIA</p>
           {task.criteria.map((c) => <p key={c}>- {c}</p>)}
+        </>
+      )}
+      {task.session && (
+        <>
+          <p className="tui-section tui-gap">SESSIONS <span className="tui-key">o</span> <span className="tui-muted">copies resume command</span></p>
+          <p>{task.session.name}</p>
+          <p className="tui-muted tui-indent">claude --resume {task.session.id}…</p>
         </>
       )}
       {task.log.length === 0 ? (

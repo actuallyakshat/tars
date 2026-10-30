@@ -1,3 +1,4 @@
 /dist/
 /tars
 *.db
+.claude/worktrees/

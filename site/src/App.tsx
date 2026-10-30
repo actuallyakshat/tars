@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { TuiDemo } from "./TuiDemo";
 import { Day } from "./Day";
+import { Habits, NeedsYou, NotJira, Reports, Status, SteerLess } from "./Story";
 import { Mark } from "./Mark";
 import { Reveal, press } from "./Reveal";
 
@@ -25,7 +26,7 @@ export function App() {
           <span>tars</span>
         </a>
         <nav aria-label="Primary">
-          <a href="#day">How it works</a>
+          <a href="#reports">How it works</a>
           <a href="#install">Install</a>
           <a href={`https://github.com/${REPO}`}>GitHub</a>
         </nav>
@@ -49,18 +50,18 @@ export function App() {
                 <Mark size={64} />
               </motion.div>
             </motion.div>
-            <motion.h1 variants={heroItem}>The to-do list your coding agent keeps for you</motion.h1>
+            <motion.h1 variants={heroItem}>Stay on top of every agent, without reading every transcript</motion.h1>
             <motion.p className="lede" variants={heroItem}>
-              Tell Claude what's on your plate in plain words. tars turns it into tasks, links the Jira
-              tickets, and overnight works through the ready ones on separate, tested branches. You review in
-              the morning.
+              tars is the task list you and Claude share. Agents report back in a few lines: what they did, how they
+              checked it, what they need from you. Questions wait in one place, every session is a command away, and
+              you steer less because tars remembers how you want things done.
             </motion.p>
             <motion.div className="ctas" variants={heroItem}>
               <motion.a className="btn btn-primary" href="#install" {...press}>
                 <PromptIcon />
                 Install tars
               </motion.a>
-              <motion.a className="btn btn-quiet" href="#day" {...press}>
+              <motion.a className="btn btn-quiet" href="#reports" {...press}>
                 See how it works
                 <ChevronDownIcon />
               </motion.a>
@@ -71,43 +72,13 @@ export function App() {
           </motion.div>
         </motion.section>
 
+        <Reports />
+        <NeedsYou />
+        <SteerLess />
+        <NotJira />
         <Day />
-
-        <section className="section memory" aria-labelledby="memory-title">
-          <Reveal className="memory-copy">
-            <h2 id="memory-title">It remembers how each repo works</h2>
-            <p>
-              Save what an agent can't read from the code: your definition of done, the test command that
-              actually works, how to reach the local database, the thing that always breaks. Every sweep reads
-              it before touching anything.
-            </p>
-            <p>Your repo's own CLAUDE.md and AGENTS.md always win. tars only fills in what they leave out.</p>
-          </Reveal>
-          <div className="memory-visual">
-            <ol className="stack" aria-label="What the agent reads, highest priority first">
-              <Reveal as="li" delay={0.00}>
-                <span className="stack-name">CLAUDE.md and AGENTS.md</span>
-                <span className="stack-note">The repo's own rules, read first</span>
-              </Reveal>
-              <Reveal as="li" delay={0.08}>
-                <span className="stack-name">Repo profile</span>
-                <span className="stack-note">Definition of done, tests, local DB, gotchas</span>
-              </Reveal>
-              <Reveal as="li" delay={0.16}>
-                <span className="stack-name">Your profile</span>
-                <span className="stack-note">How you like to work, in every repo</span>
-              </Reveal>
-            </ol>
-            <Reveal delay={0.25}>
-            <pre className="code">
-              <span className="dim">$</span> tars repo set billing-svc -S tests \{"\n"}
-              {"    "}-x "make test; integration needs docker compose up db"{"\n"}
-              <span className="dim">$</span> tars profile set style \{"\n"}
-              {"    "}-x "Small PRs. No mocks for the DB layer."
-            </pre>
-            </Reveal>
-          </div>
-        </section>
+        <Habits />
+        <Status />
 
         <section className="section charge" aria-labelledby="charge-title">
           <Reveal>
@@ -128,7 +99,7 @@ export function App() {
             </Reveal>
             <Reveal delay={0.15}>
               <dt>Asks instead of guessing</dt>
-              <dd>Unclear requirements turn into a question in your morning brief, not a wrong implementation.</dd>
+              <dd>Anything unclear becomes a question in Needs you, not a wrong implementation.</dd>
             </Reveal>
             <Reveal delay={0.20}>
               <dt>Logs who did what</dt>
