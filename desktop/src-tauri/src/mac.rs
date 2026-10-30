@@ -1,5 +1,5 @@
 //! The few macOS integrations the app needs: clipboard, Finder, the browser
-//! and Terminal.
+//! and the terminal (Terminal.app, iTerm2 or Ghostty).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -32,22 +32,94 @@ fn applescript_string(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', r"\\").replace('"', "\\\""))
 }
 
-/// AppleScript that opens a new Terminal window running the resume command,
-/// from the folder the session started in when there is one.
-pub fn terminal_script(id: &str, launch_dir: Option<&str>) -> Result<String> {
+/// The terminal apps Resume in Terminal knows how to drive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalApp {
+    Terminal,
+    Iterm,
+    Ghostty,
+}
+
+impl TerminalApp {
+    fn bundle(self) -> &'static str {
+        match self {
+            TerminalApp::Terminal => "Terminal.app",
+            TerminalApp::Iterm => "iTerm.app",
+            TerminalApp::Ghostty => "Ghostty.app",
+        }
+    }
+
+    fn from_term_program(v: &str) -> Option<Self> {
+        match v {
+            "Apple_Terminal" => Some(TerminalApp::Terminal),
+            "iTerm.app" => Some(TerminalApp::Iterm),
+            "ghostty" => Some(TerminalApp::Ghostty),
+            _ => None,
+        }
+    }
+}
+
+/// The terminal tars was launched from when we know it ($TERM_PROGRAM), else
+/// the first installed of Ghostty and iTerm2, else Terminal.app. Opening the
+/// app from the Dock leaves $TERM_PROGRAM unset, hence the fallback.
+pub fn pick_terminal(term_program: Option<&str>, installed: impl Fn(TerminalApp) -> bool) -> TerminalApp {
+    term_program
+        .and_then(TerminalApp::from_term_program)
+        .or_else(|| [TerminalApp::Ghostty, TerminalApp::Iterm].into_iter().find(|&t| installed(t)))
+        .unwrap_or(TerminalApp::Terminal)
+}
+
+fn is_installed(app: TerminalApp) -> bool {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    [Some(PathBuf::from("/Applications")), home.map(|h| h.join("Applications"))]
+        .into_iter()
+        .flatten()
+        .any(|dir| dir.join(app.bundle()).exists())
+}
+
+fn launch_dir(dir: Option<&str>) -> Option<&str> {
+    dir.map(str::trim).filter(|d| !d.is_empty())
+}
+
+/// AppleScript that opens a new Terminal or iTerm2 window running the resume
+/// command, from the folder the session started in when there is one.
+pub fn terminal_script(app: TerminalApp, id: &str, dir: Option<&str>) -> Result<String> {
     let mut cmd = resume_command(id)?;
-    if let Some(dir) = launch_dir.map(str::trim).filter(|d| !d.is_empty()) {
+    if let Some(dir) = launch_dir(dir) {
         cmd = format!("cd {} && {cmd}", shell_quote(dir));
     }
-    Ok(format!(
-        "tell application \"Terminal\"\n  activate\n  do script {}\nend tell",
-        applescript_string(&cmd)
-    ))
+    let cmd = applescript_string(&cmd);
+    Ok(match app {
+        TerminalApp::Iterm => format!(
+            "tell application \"iTerm\"\n  activate\n  set w to (create window with default profile)\n  tell current session of w to write text {cmd}\nend tell"
+        ),
+        _ => format!("tell application \"Terminal\"\n  activate\n  do script {cmd}\nend tell"),
+    })
+}
+
+/// Arguments for `open` that start a Ghostty window in the session's folder
+/// and type the resume command into its shell, so the window outlives claude.
+/// Ghostty 1.2 has no AppleScript; `input` arrived in 1.2.0.
+pub fn ghostty_args(id: &str, dir: Option<&str>) -> Result<Vec<String>> {
+    let cmd = resume_command(id)?;
+    let mut args: Vec<String> = ["-na", "Ghostty.app", "--args"].map(String::from).into();
+    if let Some(dir) = launch_dir(dir) {
+        args.push(format!("--working-directory={dir}"));
+    }
+    args.push(format!("--input=raw:{cmd}\\n"));
+    Ok(args)
 }
 
 pub fn open_in_terminal(id: &str, launch_dir: Option<&str>) -> Result<()> {
-    let script = terminal_script(id, launch_dir)?;
-    run(Command::new("osascript").arg("-e").arg(script), "open Terminal")
+    let term_program = std::env::var("TERM_PROGRAM").ok();
+    match pick_terminal(term_program.as_deref(), is_installed) {
+        TerminalApp::Ghostty => run(Command::new("open").args(ghostty_args(id, launch_dir)?), "open Ghostty"),
+        app => {
+            let script = terminal_script(app, id, launch_dir)?;
+            let what = if app == TerminalApp::Iterm { "open iTerm2" } else { "open Terminal" };
+            run(Command::new("osascript").arg("-e").arg(script), what)
+        }
+    }
 }
 
 pub fn copy_text(text: &str) -> Result<()> {
@@ -151,14 +223,44 @@ mod tests {
 
     #[test]
     fn terminal_script_quotes_the_folder() {
-        let s = terminal_script("sess-42", Some("/work/it's \"here\"")).unwrap();
+        let s = terminal_script(TerminalApp::Terminal, "sess-42", Some("/work/it's \"here\"")).unwrap();
         assert_eq!(
             s,
             "tell application \"Terminal\"\n  activate\n  do script \"cd '/work/it'\\\\''s \\\"here\\\"' && claude --resume sess-42\"\nend tell"
         );
-        let s = terminal_script("sess-42", None).unwrap();
+        let s = terminal_script(TerminalApp::Terminal, "sess-42", None).unwrap();
         assert!(s.contains("do script \"claude --resume sess-42\""));
-        assert!(terminal_script("bad id", None).is_err());
+        assert!(terminal_script(TerminalApp::Terminal, "bad id", None).is_err());
+    }
+
+    #[test]
+    fn iterm_script_writes_into_a_new_window() {
+        let s = terminal_script(TerminalApp::Iterm, "sess-42", Some("/work/billing")).unwrap();
+        assert!(s.starts_with("tell application \"iTerm\""));
+        assert!(s.contains("create window with default profile"));
+        assert!(s.contains("write text \"cd '/work/billing' && claude --resume sess-42\""));
+    }
+
+    #[test]
+    fn ghostty_gets_the_folder_and_the_command_as_input() {
+        assert_eq!(
+            ghostty_args("sess-42", Some(" /work/my billing ")).unwrap(),
+            ["-na", "Ghostty.app", "--args", "--working-directory=/work/my billing", "--input=raw:claude --resume sess-42\\n"]
+        );
+        assert_eq!(ghostty_args("sess-42", Some("")).unwrap().len(), 4);
+        assert!(ghostty_args("$(id)", None).is_err());
+    }
+
+    #[test]
+    fn terminal_follows_term_program_then_what_is_installed() {
+        let none = |_: TerminalApp| false;
+        let all = |_: TerminalApp| true;
+        assert_eq!(pick_terminal(Some("ghostty"), none), TerminalApp::Ghostty);
+        assert_eq!(pick_terminal(Some("iTerm.app"), all), TerminalApp::Iterm);
+        assert_eq!(pick_terminal(Some("Apple_Terminal"), all), TerminalApp::Terminal);
+        assert_eq!(pick_terminal(None, all), TerminalApp::Ghostty);
+        assert_eq!(pick_terminal(Some("vscode"), |t| t == TerminalApp::Iterm), TerminalApp::Iterm);
+        assert_eq!(pick_terminal(None, none), TerminalApp::Terminal);
     }
 
     #[test]
