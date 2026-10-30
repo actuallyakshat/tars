@@ -1,0 +1,20 @@
+version: 2
+project_name: tars
+builds:
+  - main: ./cmd/tars
+    env: [CGO_ENABLED=0] # modernc sqlite is pure Go, so cross-compiling just works
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ldflags: ["-s -w -X github.com/akshat-dubey/tars/internal/cli.Version={{.Version}}"]
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+brews:
+  - repository:
+      owner: akshat-dubey
+      name: homebrew-tap
+    directory: Formula
+    description: "TARS · Track · Assign · Run · Ship — a task ledger you and your agents share"
+    test: system "#{bin}/tars", "--version"
