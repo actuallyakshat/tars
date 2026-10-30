@@ -494,6 +494,7 @@ const SHORTCUTS: [string, string][] = [
   ["⌘N", "New task"],
   ["⌘B", "Show or hide the sidebar"],
   ["⌘⇧B", "Show or hide the preview"],
+  ["f", "Open the selected task full screen, or go back"],
   ["⌘R", "Refresh"],
   ["⌘+  ⌘−  ⌘0", "Zoom in, zoom out, actual size"],
   ["?", "Legend"],

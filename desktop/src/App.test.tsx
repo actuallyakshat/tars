@@ -209,6 +209,19 @@ describe("actions", () => {
     expect(report.getByText("Alert #oncall or #billing-alerts?")).toBeInTheDocument();
     expect(report.getByText("billing-alerts")).toBeInTheDocument();
     expect(report.queryByRole("button", { name: "Answer" })).toBeNull();
+
+    // The answer can be changed: the box starts with the current one.
+    await user.click(report.getByRole("button", { name: "Change answer" }));
+    const edit = detail().getByRole("textbox", { name: "Your answer" });
+    expect(edit).toHaveValue("billing-alerts");
+    await user.clear(edit);
+    await user.type(edit, "billing-oncall{Enter}");
+    expect(b.callsTo("answer_task")).toEqual([
+      { id: 1, text: "billing-alerts" },
+      { id: 1, text: "billing-oncall" },
+    ]);
+    expect(await screen.findByText(/Changed your answer on #1/)).toBeInTheDocument();
+    expect(await report.findByText("billing-oncall")).toBeInTheDocument();
   });
 
   it("marks done with x, reopens, and changes status from the picker", async () => {
@@ -400,17 +413,56 @@ describe("layout", () => {
       const before = Number(handle.getAttribute("aria-valuenow"));
       handle.focus();
       await user.keyboard("{ArrowLeft}{ArrowLeft}");
-      const after = Number(screen.getByRole("separator").getAttribute("aria-valuenow"));
+      const after = Number(screen.getByRole("separator", { name: "Resize preview" }).getAttribute("aria-valuenow"));
       expect(after).toBe(before + 48);
       expect(localStorage.getItem("tars.detailWidth")).toBe(String(after));
 
       // In a narrow window the preview gives way so the list keeps its minimum width.
       Object.defineProperty(window, "innerWidth", { configurable: true, value: 1000 });
       act(() => void window.dispatchEvent(new Event("resize")));
-      expect(Number(screen.getByRole("separator").getAttribute("aria-valuenow"))).toBe(1000 - 208 - 360);
+      expect(Number(screen.getByRole("separator", { name: "Resize preview" }).getAttribute("aria-valuenow"))).toBe(1000 - 208 - 360);
     } finally {
       Object.defineProperty(window, "innerWidth", { configurable: true, value: original });
     }
+  });
+
+  it("opens a task full screen with f or the header button, and goes back with Esc", async () => {
+    fakeBackend();
+    const user = await boot();
+    await detail().findByText("Backoff, 5 tries");
+
+    await user.keyboard("f");
+    expect(screen.queryByRole("navigation", { name: "Views" })).toBeNull();
+    expect(screen.queryByTestId("row-1")).toBeNull();
+    expect(detail().getByText("Backoff, 5 tries")).toBeInTheDocument();
+
+    // Esc leaves full screen first, back to the list with the preview still open.
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("navigation", { name: "Views" })).toBeInTheDocument();
+    expect(screen.getByTestId("row-1")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Task details" })).toBeInTheDocument();
+
+    await user.click(detail().getByRole("button", { name: "Open full screen" }));
+    expect(screen.queryByTestId("row-1")).toBeNull();
+    await user.click(detail().getByRole("button", { name: "Exit full screen" }));
+    expect(screen.getByTestId("row-1")).toBeInTheDocument();
+  });
+
+  it("resizes the sidebar within its limits and remembers the width", async () => {
+    fakeBackend();
+    const user = await boot();
+    const handle = await screen.findByRole("separator", { name: "Resize sidebar" });
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(208);
+    handle.focus();
+    await user.keyboard("{ArrowRight}{ArrowRight}");
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(256);
+    expect(localStorage.getItem("tars.sidebarWidth")).toBe("256");
+
+    // It never widens past its maximum, nor narrows past its minimum.
+    await user.keyboard("{ArrowRight}".repeat(10));
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(320);
+    await user.keyboard("{ArrowLeft}".repeat(20));
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(180);
   });
 
   it("shows the legend with ? and returns with Esc", async () => {

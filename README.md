@@ -39,7 +39,13 @@ To upgrade later: `brew upgrade --cask tars`.
 /plugin install tars@tars
 ```
 
-To get updates later, run `/plugin marketplace update tars`.
+**3. The desktop app (macOS, optional).** A window onto the same list; it uses the CLI above.
+
+```bash
+brew install --cask actuallyakshat/tap/tars-app
+```
+
+**Updating.** Run `/tars:update` in Claude Code: it upgrades the CLI, the plugin and the desktop app, whichever you have, and tells you what to reload. By hand: `brew upgrade --cask tars tars-app` and `/plugin marketplace update tars`.
 
 ## The CLI
 
@@ -99,6 +105,7 @@ Precedence: the repo's **CLAUDE.md / AGENTS.md** > tars repo profile > personal 
 | `/tars:sweep [filter] [--yes]` | For each `ready` task: create a worktree on `tars/<id>-<slug>`, write tests for the acceptance criteria, implement, run the suite, check the DoD, and **commit locally**. The task moves to `in-review`, or to `blocked` with a question for you. Never pushes. |
 | `/tars:brief` | Morning review: what the sweep produced, questions waiting for you, what's due, follow-ups, and stale work. Suggests a focus for the day. |
 | `/tars:park [id]` | Saves goal, decisions, dead ends and the next step into the task log so the work can be resumed later. |
+| `/tars:update [cli\|plugin\|app]` | Updates the CLI, this plugin and the desktop app to the latest release. Asks before installing anything you don't have, and leaves dev builds alone. |
 
 **The sweep runs unattended once you confirm the plan,** but it still goes through Claude Code's permission system. For an overnight run, set up allow rules for your test, build and git commands, or run the session in a sandboxed permission mode you trust.
 

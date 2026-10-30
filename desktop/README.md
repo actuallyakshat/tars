@@ -16,13 +16,14 @@ The app has no database code of its own. Every read and write runs the `tars` CL
 | `u` | Undo the last status or priority change |
 | `e` | Edit the task |
 | `⌘⌫` | Delete the task (asks first). Right-click a task for Edit, Done and Delete |
-| `a` | Answer the agent's question |
+| `a` | Answer the agent's question, or change your answer |
 | `n` | Add a note |
 | `c` / `⌘N` | New task |
 | `o` | Copy the latest session's resume command |
 | `l` | Expand / collapse activity |
+| `f` | Open the selected task full screen (`f` or `esc` to go back) |
 | `⌘K` | Search tasks and commands |
-| `⌘B` / `⌘⇧B` | Show or hide the sidebar / preview |
+| `⌘B` / `⌘⇧B` | Show or hide the sidebar / preview. Drag either divider to resize (the sidebar stops at 320px); double-click resets |
 | `⌘+` `⌘−` `⌘0` | Zoom |
 | `⌘R` | Refresh |
 | `?` | Legend |

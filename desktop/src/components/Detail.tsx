@@ -5,6 +5,7 @@ import { PriorityPicker, StatusPicker } from "./StatusPicker";
 
 export interface DetailActions {
   onClose: () => void;
+  onToggleFull: () => void;
   onEdit: () => void;
   onStatus: (status: Status) => void;
   onPriority: (priority: number) => void;
@@ -24,6 +25,8 @@ interface Props extends DetailActions {
   task: Task | null;
   now: Date;
   focused: boolean;
+  /** Filling the window instead of sitting beside the list. */
+  full: boolean;
   answering: boolean;
   noting: boolean;
   logOpen: boolean;
@@ -44,7 +47,7 @@ export function Detail(p: Props) {
   }
   const prio = clampPriority(t.priority);
   return (
-    <section className={"detail" + (p.focused ? " focused" : "")} aria-label="Task details" tabIndex={-1}>
+    <section className={"detail" + (p.focused ? " focused" : "") + (p.full ? " full" : "")} aria-label="Task details" tabIndex={-1}>
       <div className="drag detail-top" data-tauri-drag-region />
       <div className="detail-scroll">
         <header className="detail-head">
@@ -57,6 +60,20 @@ export function Detail(p: Props) {
           </button>
           <button className="ghost" onClick={p.onToggleDone} title="x">
             {t.status === "done" ? "Reopen" : "Mark done"}
+          </button>
+          <button
+            className="icon-button"
+            onClick={p.onToggleFull}
+            aria-label={p.full ? "Exit full screen" : "Open full screen"}
+            title={p.full ? "Exit full screen (f or Esc)" : "Open full screen (f)"}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              {p.full ? (
+                <path d="M5 1.5V5H1.5M7 10.5V7h3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              ) : (
+                <path d="M1.5 5V1.5H5M10.5 7v3.5H7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              )}
+            </svg>
           </button>
           <button className="icon-button" onClick={p.onClose} aria-label="Close preview" title="Close preview (⌘⇧B)">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
@@ -72,6 +89,7 @@ export function Detail(p: Props) {
             r={t.report}
             now={now}
             open={!!openQuestion(t)}
+            asked={!!t.report.needs_you}
             answering={p.answering}
             onAnswer={p.onAnswer}
             setAnswering={p.setAnswering}
@@ -162,12 +180,14 @@ interface ReportProps {
   r: Report;
   now: Date;
   open: boolean;
+  /** The report asked something, answered or not; an answer can be changed. */
+  asked: boolean;
   answering: boolean;
   onAnswer: (text: string) => Promise<boolean>;
   setAnswering: (v: boolean) => void;
 }
 
-function ReportCard({ r, now, open, answering, onAnswer, setAnswering }: ReportProps) {
+function ReportCard({ r, now, open, asked, answering, onAnswer, setAnswering }: ReportProps) {
   return (
     <section className={"report" + (open ? " asking" : "")} aria-label="Report">
       <div className="report-head">
@@ -217,18 +237,23 @@ function ReportCard({ r, now, open, answering, onAnswer, setAnswering }: ReportP
           </>
         )}
       </dl>
-      {open &&
+      {asked &&
         (answering ? (
           <Composer
             label="Your answer"
             placeholder="Your answer. The next agent on this task will see it."
-            submitLabel="Send answer"
+            submitLabel={open ? "Send answer" : "Save answer"}
+            initial={open ? "" : (r.answer ?? "")}
             onSubmit={onAnswer}
             onCancel={() => setAnswering(false)}
           />
-        ) : (
+        ) : open ? (
           <button className="primary" onClick={() => setAnswering(true)} title="a">
             Answer
+          </button>
+        ) : (
+          <button className="ghost" onClick={() => setAnswering(true)} title="a">
+            Change answer
           </button>
         ))}
     </section>

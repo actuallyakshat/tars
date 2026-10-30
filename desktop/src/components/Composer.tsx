@@ -4,13 +4,15 @@ interface Props {
   label: string;
   placeholder: string;
   submitLabel: string;
+  /** Starting text, e.g. an answer being changed. */
+  initial?: string;
   onSubmit: (text: string) => Promise<boolean>;
   onCancel: () => void;
 }
 
 /** A small inline text box. ⌘↩ or ↩ submits, Esc cancels. */
-export function Composer({ label, placeholder, submitLabel, onSubmit, onCancel }: Props) {
-  const [text, setText] = useState("");
+export function Composer({ label, placeholder, submitLabel, initial = "", onSubmit, onCancel }: Props) {
+  const [text, setText] = useState(initial);
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => ref.current?.focus(), []);

@@ -138,7 +138,7 @@ export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
       }
       case "answer_task": {
         const t = find(args!.id);
-        if (!t.report?.needs_you || t.report.answered_at) throw { kind: "failed", message: `#${t.id} has no open question` };
+        if (!t.report?.needs_you) throw { kind: "failed", message: `#${t.id} has no open question` };
         t.report.answer = args!.text as string;
         t.report.answered_at = new Date().toISOString();
         t.needs_you = false;

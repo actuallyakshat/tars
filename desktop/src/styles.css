@@ -658,10 +658,6 @@ ol {
   -webkit-user-select: text;
 }
 
-.detail.focused .detail-head {
-  box-shadow: 0 1px 0 var(--signal);
-}
-
 .detail-head {
   display: flex;
   flex-wrap: wrap;
@@ -1990,4 +1986,36 @@ button kbd,
   .confirm {
     animation: none;
   }
+}
+
+/* ---------- resizable sidebar ---------- */
+
+.sidebar-wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sidebar-wrap > .sidebar {
+  flex: 1;
+  min-width: 0;
+}
+
+.resizer.at-right {
+  left: auto;
+  right: -3px;
+}
+
+/* ---------- full-screen detail ---------- */
+
+/* The detail fills the window: its top band clears the traffic lights, and
+   the text keeps a readable measure instead of running edge to edge. */
+.detail.full .detail-top {
+  height: 46px;
+}
+
+.detail.full .detail-scroll {
+  padding-left: max(28px, calc((100% - 860px) / 2));
+  padding-right: max(28px, calc((100% - 860px) / 2));
 }

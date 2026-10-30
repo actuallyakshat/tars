@@ -117,7 +117,8 @@ func (s *Store) Reports(taskID int64) ([]Report, error) {
 var ErrNothingToAnswer = errors.New("no open question on this task")
 
 // Answer records the user's answer to the latest report's question and logs it
-// for whichever agent picks the task up next.
+// for whichever agent picks the task up next. Answering again replaces the
+// answer, so a hasty one can be corrected; the log keeps both.
 func (s *Store) Answer(taskID int64, answer, by string) error {
 	answer = strings.TrimSpace(answer)
 	if answer == "" {
@@ -127,13 +128,20 @@ func (s *Store) Answer(taskID int64, answer, by string) error {
 	if err != nil {
 		return err
 	}
-	if r == nil || r.NeedsYou == "" || r.AnsweredAt != "" {
+	if r == nil || r.NeedsYou == "" {
 		return fmt.Errorf("task %d: %w", taskID, ErrNothingToAnswer)
+	}
+	if r.AnsweredAt != "" && r.Answer == answer {
+		return nil
 	}
 	if _, err := s.db.Exec(`UPDATE reports SET answer = ?, answered_at = ? WHERE id = ?`, answer, now(), r.ID); err != nil {
 		return err
 	}
-	return s.AddLog(taskID, by, "answer", "Q: "+r.NeedsYou+"\nA: "+answer)
+	text := "Q: " + r.NeedsYou + "\nA: " + answer
+	if r.AnsweredAt != "" {
+		text = "Q: " + r.NeedsYou + "\nA (changed from \"" + r.Answer + "\"): " + answer
+	}
+	return s.AddLog(taskID, by, "answer", text)
 }
 
 // LinkSession records that session sess touched task taskID, creating or

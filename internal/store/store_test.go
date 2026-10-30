@@ -508,8 +508,25 @@ func TestReportsNeedsYouAndAnswers(t *testing.T) {
 	if last := got.Log[len(got.Log)-1]; last.Kind != "answer" || !strings.Contains(last.Text, "billing-alerts") {
 		t.Fatalf("answer not logged: %+v", last)
 	}
-	if err := s.Answer(task.ID, "again", "user"); !errors.Is(err, ErrNothingToAnswer) {
-		t.Fatal("a question can only be answered once")
+	// Answering again changes the answer; the log keeps the old one.
+	if err := s.Answer(task.ID, "billing-oncall", "user"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetTask(task.ID)
+	if got.NeedsYou || got.Report.Answer != "billing-oncall" {
+		t.Fatalf("after changing the answer: %+v", got.Report)
+	}
+	last := got.Log[len(got.Log)-1]
+	if last.Kind != "answer" || !strings.Contains(last.Text, `changed from "billing-alerts"`) || !strings.Contains(last.Text, "billing-oncall") {
+		t.Fatalf("changed answer not logged: %+v", last)
+	}
+	// The same answer again is not a change.
+	before := len(got.Log)
+	if err := s.Answer(task.ID, " billing-oncall ", "user"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = s.GetTask(task.ID); len(got.Log) != before {
+		t.Fatal("re-sending the same answer logged a change")
 	}
 
 	// A newer report without a question clears needs-you; one with a new question sets it again.

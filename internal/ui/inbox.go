@@ -543,14 +543,15 @@ func (m *inbox) updateList(msg tea.KeyMsg) tea.Cmd {
 		t := m.selected()
 		switch {
 		case t == nil:
-		case !t.NeedsYou:
-			m.say("#%d has no open question", t.ID)
 		default:
-			q := ""
-			if full, err := m.st.GetTask(t.ID); err == nil && full.Report != nil {
-				q = full.Report.NeedsYou
+			// An answered question can be answered again: the box starts with
+			// the current answer, to change it.
+			full, err := m.st.GetTask(t.ID)
+			if err != nil || full.Report == nil || full.Report.NeedsYou == "" {
+				m.say("#%d has no open question", t.ID)
+				break
 			}
-			return m.startInput(modeAnswer, "", Truncate(q, 80))
+			return m.startInput(modeAnswer, full.Report.Answer, Truncate(full.Report.NeedsYou, 80))
 		}
 	case "o":
 		m.copyResume()

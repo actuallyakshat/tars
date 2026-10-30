@@ -131,9 +131,9 @@ fn reads_and_writes_through_the_real_cli() {
     let task = t.show(1).unwrap();
     assert!(task.get("needs_you").is_none());
     assert_eq!(task["report"]["answer"], "billing-alerts");
-    let e2 = t.answer(1, "again").unwrap_err();
-    assert_eq!(e2.kind, ErrorKind::Failed);
-    assert_eq!(e2.message, "#1 has no open question");
+    // Answering again changes the answer.
+    t.answer(1, "billing-oncall").unwrap();
+    assert_eq!(t.show(1).unwrap()["report"]["answer"], "billing-oncall");
 
     t.note(1, "-v is fine as a note").unwrap();
     let log = t.show(1).unwrap()["log"].as_array().unwrap().clone();

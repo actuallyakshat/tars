@@ -360,8 +360,11 @@ func TestReportAnswerAndSessions(t *testing.T) {
 	if tk := e.task("1"); tk.NeedsYou || tk.Report.Answer != "billing-alerts" {
 		t.Fatalf("answer: %+v", tk.Report)
 	}
-	e.fails("answer", "1", "again")
-	if md := e.ok("context", "1"); !strings.Contains(md, "user answered:** billing-alerts") {
+	// Answering again changes the answer, and says so.
+	if out := e.ok("answer", "1", "billing-oncall"); !strings.Contains(out, "Changed your answer on #1") {
+		t.Fatalf("changing an answer: %s", out)
+	}
+	if md := e.ok("context", "1"); !strings.Contains(md, "user answered:** billing-oncall") {
 		t.Fatalf("context should show the answer:\n%s", md)
 	}
 

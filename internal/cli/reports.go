@@ -82,7 +82,7 @@ func answerCmd(a *app) *cobra.Command {
 	var by string
 	cmd := &cobra.Command{
 		Use:     "answer <id> <answer…>",
-		Short:   "Answer the question an agent left on a task",
+		Short:   "Answer the question an agent left on a task, or change your answer",
 		Example: `  tars answer 15 "billing-alerts"`,
 		Args:    cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -90,13 +90,21 @@ func answerCmd(a *app) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			prev, err := a.st.LatestReport(id)
+			if err != nil {
+				return err
+			}
+			changed := prev != nil && prev.AnsweredAt != ""
 			if err := a.st.Answer(id, strings.Join(args[1:], " "), by); err != nil {
 				if errors.Is(err, store.ErrNothingToAnswer) {
 					return fmt.Errorf("#%d has no open question", id)
 				}
 				return err
 			}
-			return a.emit(map[string]any{"id": id, "answered": true}, func() string {
+			return a.emit(map[string]any{"id": id, "answered": true, "changed": changed}, func() string {
+				if changed {
+					return ui.Success(fmt.Sprintf("Changed your answer on #%d. The next agent on it will see the new one.", id)) + "\n"
+				}
 				return ui.Success(fmt.Sprintf("Answered #%d. The next agent on it will see your answer.", id)) + "\n"
 			})
 		},

@@ -32,6 +32,7 @@ const JIRA_KEY = "tars.jiraBase";
 const SIDEBAR_KEY = "tars.sidebarOpen";
 const DETAIL_KEY = "tars.detailOpen";
 const WIDTH_KEY = "tars.detailWidth";
+const SIDEBAR_WIDTH_KEY = "tars.sidebarWidth";
 const ZOOM_KEY = "tars.zoom";
 const GROUP_KEY = "tars.groupBy";
 const SORT_KEY = "tars.sortBy";
@@ -39,6 +40,11 @@ const ZOOM_STEPS = [0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.4, 1.5];
 export const DETAIL_MIN = 340;
 const DETAIL_DEFAULT = 460;
 const LIST_MIN = 360;
+// The sidebar resizes too, but only so far: past this it is wasted space.
+export const SIDEBAR_MIN = 180;
+export const SIDEBAR_MAX = 320;
+const SIDEBAR_DEFAULT = 208;
+const clampSidebar = (w: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, w));
 
 const stored = (k: string, fallback: boolean) => {
   const v = localStorage.getItem(k);
@@ -68,6 +74,11 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY, true));
   const [detailOpen, setDetailOpen] = useState(() => stored(DETAIL_KEY, true));
   const [detailWidth, setDetailWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || DETAIL_DEFAULT);
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    clampSidebar(Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT),
+  );
+  // The selected task's details fill the window: no sidebar, no list.
+  const [fullDetail, setFullDetail] = useState(false);
   const [flash, setFlash] = useState<Flash>(null);
   const [jiraBase, setJiraBase] = useState(() => localStorage.getItem(JIRA_KEY) ?? "");
   const [now, setNow] = useState(() => new Date());
@@ -216,6 +227,7 @@ export function App() {
   useEffect(() => localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? "1" : "0"), [sidebarOpen]);
   useEffect(() => localStorage.setItem(DETAIL_KEY, detailOpen ? "1" : "0"), [detailOpen]);
   useEffect(() => localStorage.setItem(WIDTH_KEY, String(Math.round(detailWidth))), [detailWidth]);
+  useEffect(() => localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(sidebarWidth))), [sidebarWidth]);
   useEffect(() => localStorage.setItem(GROUP_KEY, groupBy), [groupBy]);
   useEffect(() => localStorage.setItem(SORT_KEY, sortBy), [sortBy]);
   useEffect(() => {
@@ -226,10 +238,10 @@ export function App() {
   // Keep the preview within what the window can fit beside a usable list.
   const clampWidth = useCallback(
     (w: number) => {
-      const max = Math.max(DETAIL_MIN, window.innerWidth - (sidebarOpen ? 208 : 0) - LIST_MIN);
+      const max = Math.max(DETAIL_MIN, window.innerWidth - (sidebarOpen ? sidebarWidth : 0) - LIST_MIN);
       return Math.min(max, Math.max(DETAIL_MIN, w));
     },
-    [sidebarOpen],
+    [sidebarOpen, sidebarWidth],
   );
 
   const openDetail = () => {
@@ -362,13 +374,24 @@ export function App() {
   const toggleSidebar = () => setSidebarOpen((o) => !o);
   const toggleDetail = () => {
     setDetailOpen((o) => !o);
+    setFullDetail(false);
     setFocus("list");
+  };
+  const toggleFull = () => {
+    if (!selected && !fullDetail) return;
+    setFullDetail((f) => !f);
+    setDetailOpen(true);
+    setFocus("detail");
   };
 
   const answer = async (text: string) => {
     if (!selected) return false;
     const id = selected.id;
-    const ok = await act(() => api.answer(id, text), `Answered #${id}. The next agent on it will see your answer.`);
+    const changing = !!shown?.report?.answered_at;
+    const ok = await act(
+      () => api.answer(id, text),
+      changing ? `Changed your answer on #${id}. The next agent on it will see the new one.` : `Answered #${id}. The next agent on it will see your answer.`,
+    );
     if (ok) setAnswering(false);
     return ok;
   };
@@ -409,7 +432,7 @@ export function App() {
 
   const startAnswer = () => {
     if (!shown) return;
-    if (!shown.needs_you && !openQuestion(shown)) {
+    if (!shown.needs_you && !openQuestion(shown) && !shown.report?.needs_you) {
       setFlash({ text: `#${shown.id} has no open question`, error: true });
       return;
     }
@@ -496,7 +519,8 @@ export function App() {
         if (answering || noting) {
           setAnswering(false);
           setNoting(false);
-        } else if (focus === "detail") setFocus("list");
+        } else if (fullDetail) setFullDetail(false);
+        else if (focus === "detail") setFocus("list");
         else if (detailOpen) setDetailOpen(false);
         else if (query) setQuery("");
         else return;
@@ -548,6 +572,10 @@ export function App() {
       case "l":
         setLogOpen((v) => !v);
         break;
+      case "f":
+        if (!selected && !fullDetail) return;
+        toggleFull();
+        break;
       case "o": {
         const s = shown?.sessions?.[0];
         if (s) void copy(resumeCommand(s.id), "resume command");
@@ -592,6 +620,15 @@ export function App() {
     ...(shown
       ? [
           { id: "edit", label: `Edit #${shown.id}`, keys: "E", run: () => startEdit(shown) },
+          {
+            id: "full",
+            label: fullDetail ? "Exit full screen" : `Open #${shown.id} full screen`,
+            keys: "F",
+            run: () => {
+              setPage("list");
+              toggleFull();
+            },
+          },
           { id: "delete", label: `Delete #${shown.id}…`, keys: "⌘⌫", run: () => setConfirmDelete(shown) },
         ]
       : []),
@@ -629,17 +666,22 @@ export function App() {
     { id: "zoom-reset", label: "Actual size", keys: "⌘0", run: () => zoomBy(0) },
   ];
   const showDetail = page === "list" && detailOpen;
-  const columns = [sidebarOpen ? "208px" : null, "minmax(0, 1fr)", showDetail ? `${clampWidth(detailWidth)}px` : null]
-    .filter(Boolean)
-    .join(" ");
+  const full = showDetail && fullDetail;
+  const showSidebar = sidebarOpen && !full;
+  const columns = full
+    ? "minmax(0, 1fr)"
+    : [sidebarOpen ? `${sidebarWidth}px` : null, "minmax(0, 1fr)", showDetail ? `${clampWidth(detailWidth)}px` : null]
+        .filter(Boolean)
+        .join(" ");
 
   return (
     <PanesContext.Provider value={{ sidebarOpen, detailOpen: showDetail, toggleSidebar, toggleDetail }}>
     <div
-      className={"app" + (focus === "detail" ? " detail-focus" : "") + (sidebarOpen ? "" : " no-sidebar")}
+      className={"app" + (focus === "detail" ? " detail-focus" : "") + (showSidebar ? "" : " no-sidebar") + (full ? " full-detail" : "")}
       style={{ gridTemplateColumns: columns }}
     >
-      {sidebarOpen && (
+      {showSidebar && (
+        <div className="sidebar-wrap">
         <Sidebar
           counts={viewCounts}
           view={view}
@@ -650,6 +692,14 @@ export function App() {
             setPage(p);
           }}
         />
+        <Resizer
+          label="Resize sidebar"
+          edge="right"
+          width={sidebarWidth}
+          onWidth={(w) => setSidebarWidth(clampSidebar(w))}
+          onReset={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+        />
+        </div>
       )}
       {page === "new" && <NewTaskPage repos={repos} onAdd={add} onBack={() => setPage("list")} />}
       {page === "edit" && editing && (
@@ -672,7 +722,7 @@ export function App() {
         />
       )}
       {page === "legend" && <LegendPage onBack={() => setPage("list")} />}
-      {page === "list" && (
+      {page === "list" && !full && (
         <TaskList
           groups={groups}
           view={view}
@@ -699,16 +749,27 @@ export function App() {
       )}
       {showDetail && (
         <div className="detail-wrap">
-          <Resizer width={clampWidth(detailWidth)} onWidth={(w) => setDetailWidth(clampWidth(w))} onReset={() => setDetailWidth(DETAIL_DEFAULT)} />
+          {!full && (
+            <Resizer
+              label="Resize preview"
+              edge="left"
+              width={clampWidth(detailWidth)}
+              onWidth={(w) => setDetailWidth(clampWidth(w))}
+              onReset={() => setDetailWidth(DETAIL_DEFAULT)}
+            />
+          )}
           <Detail
             task={shown}
             now={now}
             focused={focus === "detail"}
+            full={full}
+            onToggleFull={toggleFull}
             answering={answering}
             noting={noting}
             logOpen={logOpen}
             onClose={() => {
               setDetailOpen(false);
+              setFullDetail(false);
               setFocus("list");
             }}
             onEdit={() => startEdit(shown)}
@@ -744,6 +805,15 @@ export function App() {
               onClose={() => setMenu(null)}
               items={[
                 { label: "Edit…", keys: "E", run: () => startEdit(t) },
+                {
+                  label: "Open full screen",
+                  keys: "F",
+                  run: () => {
+                    setSelectedId(t.id);
+                    setFullDetail(true);
+                    openDetail();
+                  },
+                },
                 { label: t.status === "done" ? "Reopen" : "Mark done", keys: "X", run: () => toggleDone(t) },
                 { label: "Delete…", keys: "⌘⌫", danger: true, run: () => setConfirmDelete(t) },
               ]}
@@ -765,16 +835,30 @@ export function App() {
   );
 }
 
-// The divider between the list and the preview. Drag to resize, double-click
-// to reset, or focus it and use ← →.
-function Resizer({ width, onWidth, onReset }: { width: number; onWidth: (w: number) => void; onReset: () => void }) {
+// A pane divider. Drag to resize, double-click to reset, or focus it and use
+// ← →. `edge` is the side of its pane it sits on: the preview's left edge grows
+// the pane when dragged left, the sidebar's right edge when dragged right.
+function Resizer({
+  label,
+  edge,
+  width,
+  onWidth,
+  onReset,
+}: {
+  label: string;
+  edge: "left" | "right";
+  width: number;
+  onWidth: (w: number) => void;
+  onReset: () => void;
+}) {
+  const grow = edge === "left" ? -1 : 1;
   const start = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const el = e.currentTarget;
     el.setPointerCapture(e.pointerId);
     const x0 = e.clientX;
     const w0 = width;
-    const moveTo = (ev: PointerEvent) => onWidth(w0 + (x0 - ev.clientX));
+    const moveTo = (ev: PointerEvent) => onWidth(w0 + grow * (ev.clientX - x0));
     const stop = () => {
       el.removeEventListener("pointermove", moveTo);
       el.removeEventListener("pointerup", stop);
@@ -786,10 +870,10 @@ function Resizer({ width, onWidth, onReset }: { width: number; onWidth: (w: numb
   };
   return (
     <div
-      className="resizer"
+      className={"resizer at-" + edge}
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize preview"
+      aria-label={label}
       aria-valuenow={Math.round(width)}
       tabIndex={0}
       onPointerDown={start}
@@ -798,7 +882,7 @@ function Resizer({ width, onWidth, onReset }: { width: number; onWidth: (w: numb
         if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
           e.preventDefault();
           e.stopPropagation();
-          onWidth(width + (e.key === "ArrowLeft" ? 24 : -24));
+          onWidth(width + grow * (e.key === "ArrowRight" ? 24 : -24));
         }
       }}
     />

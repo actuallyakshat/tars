@@ -1,7 +1,8 @@
 name: release
 
 # Push a tag like v0.1.0 to build binaries for every platform, publish a
-# GitHub release, and update the Homebrew cask in actuallyakshat/homebrew-tap.
+# GitHub release, and update the Homebrew casks in actuallyakshat/homebrew-tap:
+# `tars` (the CLI, via goreleaser) and `tars-app` (the macOS desktop app).
 on:
   push:
     tags: ["v*"]
@@ -29,3 +30,75 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Fine-grained PAT with Contents: read & write on actuallyakshat/homebrew-tap.
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+
+  # The desktop app: one universal Tars.app, attached to the release goreleaser
+  # just published, plus the `tars-app` cask pointing at it. Not notarized, so
+  # it is ad-hoc signed and the cask clears quarantine, as the CLI's does.
+  desktop:
+    needs: release
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - run: npm ci
+      - run: npm test
+      - name: Build Tars.app
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npx tauri build --target universal-apple-darwin --bundles app \
+            --config "{\"version\":\"$VERSION\",\"bundle\":{\"macOS\":{\"signingIdentity\":\"-\"}}}"
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ZIP="Tars-$VERSION-macos-universal.zip"
+          ditto -c -k --keepParent src-tauri/target/universal-apple-darwin/release/bundle/macos/Tars.app "$ZIP"
+          gh release upload "$GITHUB_REF_NAME" "$ZIP" --clobber
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+          echo "SHA=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+      - name: Update the tars-app cask
+        env:
+          # Same fine-grained PAT goreleaser uses for the tap.
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          git clone "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/actuallyakshat/homebrew-tap.git" "$RUNNER_TEMP/tap"
+          mkdir -p "$RUNNER_TEMP/tap/Casks"
+          cat > "$RUNNER_TEMP/tap/Casks/tars-app.rb" <<CASK
+          cask "tars-app" do
+            version "$VERSION"
+            sha256 "$SHA"
+
+            url "https://github.com/actuallyakshat/tars/releases/download/v#{version}/Tars-#{version}-macos-universal.zip"
+            name "Tars"
+            desc "Desktop app for the task list you and your coding agent share"
+            homepage "https://github.com/actuallyakshat/tars"
+
+            depends_on cask: "actuallyakshat/tap/tars"
+            depends_on macos: ">= :big_sur"
+
+            app "Tars.app"
+
+            # Not Apple-notarized; clear quarantine so macOS opens it.
+            postflight do
+              system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{appdir}/Tars.app"]
+            end
+
+            zap trash: ["~/Library/WebKit/com.actuallyakshat.tars", "~/Library/Caches/com.actuallyakshat.tars"]
+          end
+          CASK
+          cd "$RUNNER_TEMP/tap"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/tars-app.rb
+          git commit -m "tars-app $VERSION"
+          git push
