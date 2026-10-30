@@ -17,15 +17,20 @@ The agent only touches the ledger when you invoke it. The plugin's skills can't 
 
 ## Install
 
-**1. The CLI.** A single binary for macOS, Linux and Windows. You don't need Go installed.
+**1. The CLI.** A single binary. You don't need Go installed.
+
+On macOS, with Homebrew (it asks you to trust a new tap once):
 
 ```bash
 brew tap actuallyakshat/tap
-brew trust --cask actuallyakshat/tap/tars   # Homebrew requires trusting third-party casks
+brew trust --cask actuallyakshat/tap/tars
 brew install --cask tars
+tars --version
 ```
 
-Or download a binary from [GitHub Releases](https://github.com/actuallyakshat/tars/releases), or build from source with `go install github.com/actuallyakshat/tars/cmd/tars@latest`.
+On Linux or Windows, download a binary from [GitHub Releases](https://github.com/actuallyakshat/tars/releases/latest). Or build from source with `go install github.com/actuallyakshat/tars/cmd/tars@latest`.
+
+To upgrade later: `brew upgrade --cask tars`.
 
 **2. The Claude Code plugin.** Run these inside Claude Code:
 

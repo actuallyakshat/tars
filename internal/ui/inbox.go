@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 
+	"github.com/actuallyakshat/tars/internal/claude"
 	"github.com/actuallyakshat/tars/internal/parse"
 	"github.com/actuallyakshat/tars/internal/store"
 )
@@ -41,18 +43,28 @@ var (
 type view struct {
 	name     string
 	statuses []string // nil = every open (not done) task
+	needsYou bool     // only tasks with an unanswered agent question
 }
 
+const (
+	viewNeedsYou = 0
+	viewOpen     = 1
+)
+
 var views = []view{
-	{"Open", nil},
-	{"Inbox", []string{store.StatusInbox}},
-	{"Ready", []string{store.StatusReady}},
-	{"Review", []string{store.StatusInReview}},
-	{"Blocked", []string{store.StatusBlocked}},
-	{"Done", []string{store.StatusDone}},
+	{name: "Needs you", needsYou: true},
+	{"Open", nil, false},
+	{"Inbox", []string{store.StatusInbox}, false},
+	{"Ready", []string{store.StatusReady}, false},
+	{"Review", []string{store.StatusInReview}, false},
+	{"Blocked", []string{store.StatusBlocked}, false},
+	{"Done", []string{store.StatusDone}, false},
 }
 
 func (v view) has(t *store.Task) bool {
+	if v.needsYou {
+		return t.NeedsYou && t.Status != store.StatusDone
+	}
 	if v.statuses == nil {
 		return t.Status != store.StatusDone
 	}
@@ -142,6 +154,7 @@ const (
 	modeNote
 	modeStatus
 	modePriority
+	modeAnswer
 )
 
 type row struct {
@@ -189,6 +202,8 @@ type inbox struct {
 	flash    string
 	flashErr bool
 	undo     *undoEntry
+
+	copy func(string) error // clipboard writer; swapped out in tests
 }
 
 // RunInbox opens the interactive task list.
@@ -205,8 +220,15 @@ func newInbox(st *store.Store) (*inbox, error) {
 	ti := textinput.New()
 	ti.Prompt = ""
 	ti.CharLimit = 500
-	m := &inbox{st: st, now: time.Now, input: ti, vp: viewport.New(0, 0)}
-	return m, m.reload()
+	m := &inbox{st: st, now: time.Now, input: ti, vp: viewport.New(0, 0), view: viewOpen, copy: clipboard.WriteAll}
+	if err := m.reload(); err != nil {
+		return nil, err
+	}
+	// Open on the user's open decisions when there are any.
+	if m.counts[viewNeedsYou] > 0 {
+		m.setView(viewNeedsYou)
+	}
+	return m, nil
 }
 
 func (m *inbox) selected() *store.Task {
@@ -403,7 +425,7 @@ func (m *inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		switch m.mode {
-		case modeSearch, modeAdd, modeNote:
+		case modeSearch, modeAdd, modeNote, modeAnswer:
 			cmd = m.updateInput(msg)
 		case modeStatus, modePriority:
 			m.updatePicker(msg)
@@ -501,7 +523,7 @@ func (m *inbox) updateList(msg tea.KeyMsg) tea.Cmd {
 		m.setView(m.view + 1)
 	case "shift+tab":
 		m.setView(m.view - 1)
-	case "1", "2", "3", "4", "5", "6":
+	case "1", "2", "3", "4", "5", "6", "7":
 		m.setView(int(key[0] - '1'))
 	case "g":
 		m.group = (m.group + 1) % groupingCount
@@ -517,6 +539,21 @@ func (m *inbox) updateList(msg tea.KeyMsg) tea.Cmd {
 		return m.startInput(modeSearch, m.query, "type to filter")
 	case "c":
 		return m.startInput(modeAdd, "", "Fix export BILL-881 !high @billing #perf due:fri")
+	case "a":
+		t := m.selected()
+		switch {
+		case t == nil:
+		case !t.NeedsYou:
+			m.say("#%d has no open question", t.ID)
+		default:
+			q := ""
+			if full, err := m.st.GetTask(t.ID); err == nil && full.Report != nil {
+				q = full.Report.NeedsYou
+			}
+			return m.startInput(modeAnswer, "", Truncate(q, 80))
+		}
+	case "o":
+		m.copyResume()
 	case "n":
 		if m.selected() != nil {
 			return m.startInput(modeNote, "", "what happened, what's next…")
@@ -615,7 +652,7 @@ func (m *inbox) submitInput() {
 		}
 		m.endInput()
 		if !views[m.view].has(t) {
-			m.setView(0)
+			m.setView(viewOpen)
 		}
 		m.query = ""
 		if err := m.reload(); err != nil {
@@ -624,6 +661,18 @@ func (m *inbox) submitInput() {
 		}
 		m.rebuild(t.ID)
 		m.say("Added #%d to Inbox", t.ID)
+	case modeAnswer:
+		t := m.selected()
+		m.endInput()
+		if t == nil || val == "" {
+			return
+		}
+		if err := m.st.Answer(t.ID, val, "user"); err != nil {
+			m.setErr(err)
+			return
+		}
+		m.afterChange(t.ID)
+		m.say("Answered #%d. The next agent on it will see your answer.", t.ID)
 	case modeNote:
 		t := m.selected()
 		m.endInput()
@@ -724,6 +773,30 @@ func (m *inbox) afterChange(id int64) {
 	m.cur = max(0, min(pos, len(m.tasks)-1))
 }
 
+// copyResume copies the command that reopens the latest Claude session that
+// worked on the selected task.
+func (m *inbox) copyResume() {
+	t := m.selected()
+	if t == nil {
+		return
+	}
+	ss, err := m.st.TaskSessions(t.ID)
+	if err != nil {
+		m.setErr(err)
+		return
+	}
+	if len(ss) == 0 {
+		m.say("No Claude session is linked to #%d yet", t.ID)
+		return
+	}
+	cmd := claude.ResumeCommand(ss[0].ID)
+	if err := m.copy(cmd); err != nil {
+		m.setErr(fmt.Errorf("couldn't copy to the clipboard: %w. Run: %s", err, cmd))
+		return
+	}
+	m.say("Copied: %s", cmd)
+}
+
 func (m *inbox) doUndo() {
 	if m.undo == nil {
 		m.say("Nothing to undo")
@@ -806,10 +879,13 @@ func (m *inbox) footer() string {
 	switch m.mode {
 	case modeSearch:
 		return " " + Accent.Render("/") + " " + m.input.View()
-	case modeAdd, modeNote:
+	case modeAdd, modeNote, modeAnswer:
 		label := "New task"
-		if m.mode == modeNote && t != nil {
+		switch {
+		case m.mode == modeNote && t != nil:
 			label = fmt.Sprintf("Note on #%d", t.ID)
+		case m.mode == modeAnswer && t != nil:
+			label = fmt.Sprintf("Answer #%d", t.ID)
 		}
 		out := " " + Accent.Render(label+":") + " " + m.input.View()
 		if m.flashErr && m.flash != "" {
@@ -839,7 +915,7 @@ func (m *inbox) footer() string {
 		return keyHints("any key", "close help")
 	}
 	if m.detail {
-		return keyHints("j/k", "next/prev", "↑↓", "scroll", "l", "activity", "n", "note", "x", "done", "s", "status", "esc", "close", "?", "help")
+		return keyHints("j/k", "next/prev", "↑↓", "scroll", "a", "answer", "o", "copy resume", "l", "activity", "n", "note", "x", "done", "esc", "close", "?", "help")
 	}
 	return keyHints("↑↓", "move", "⏎", "open", "x", "done", "s", "status", "c", "new", "/", "search", "tab", "view", "g", "group", "?", "help")
 }
@@ -860,7 +936,9 @@ func (m *inbox) listView(width, height int) string {
 		switch {
 		case m.query != "":
 			msg = fmt.Sprintf("No tasks match %q. esc clears the search.", m.query)
-		case m.counts[0] == 0 && m.view == 0:
+		case m.view == viewNeedsYou:
+			msg = "Nothing needs you. When an agent gets stuck, its question shows up here."
+		case m.counts[viewOpen] == 0 && m.view == viewOpen:
 			msg = "No open tasks. Press c to add one."
 		}
 		return "\n  " + Muted.Render(msg)
@@ -944,7 +1022,9 @@ func (c columns) render(t *store.Task, sel bool, now time.Time) string {
 	} else {
 		b.WriteString(" ")
 	}
-	if t.Unread {
+	if t.NeedsYou {
+		b.WriteString(paint(needsSt, "?"))
+	} else if t.Unread {
 		b.WriteString(paint(unreadSt, "●"))
 	} else {
 		b.WriteString(paint(plain, " "))
@@ -1034,6 +1114,14 @@ func detailContent(t *store.Task, width int, showLog bool, now time.Time) string
 	}
 	b.WriteString(head + "\n\n")
 	b.WriteString(wrap.Inherit(Bold).Render(t.Title) + "\n\n")
+	if r := t.Report; r != nil {
+		b.WriteString(groupSt.Render("REPORT") + Muted.Render("  "+Ago(r.At)) + "\n")
+		b.WriteString(reportLines(r, width))
+		if r.NeedsYou != "" && r.AnsweredAt == "" {
+			b.WriteString(Muted.Render("          press ") + helpKey.Render("a") + Muted.Render(" to answer") + "\n")
+		}
+		b.WriteString("\n")
+	}
 
 	field := func(label, value string) {
 		if value != "" {
@@ -1067,6 +1155,17 @@ func detailContent(t *store.Task, width int, showLog bool, now time.Time) string
 	}
 	section("Description", t.Body)
 	section("Acceptance criteria", t.Acceptance)
+	if len(t.Sessions) > 0 {
+		b.WriteString("\n" + groupSt.Render("SESSIONS") + "  " + helpKey.Render("o") + Muted.Render(" copies the latest resume command") + "\n")
+		for _, ss := range t.Sessions {
+			name := ss.Name
+			if name == "" {
+				name = "Unnamed session"
+			}
+			b.WriteString(textSt.Render(Truncate(name, width-14)) + Muted.Render("  "+Ago(ss.LastAt)) + "\n")
+			b.WriteString(Muted.Render("  claude --resume "+ss.ID) + "\n")
+		}
+	}
 
 	b.WriteString("\n")
 	if len(t.Log) == 0 {
@@ -1115,9 +1214,9 @@ func helpView(width, height int) string {
 		}
 		return b.String()
 	}
-	nav := section{"Navigate", []string{"↑↓ j k", "move", "home end", "first / last", "tab ⇧tab", "next / previous view", "1–6", "jump to view", "enter", "open / close details", "esc ← h", "back, clear search"}}
+	nav := section{"Navigate", []string{"↑↓ j k", "move", "home end", "first / last", "tab ⇧tab", "next / previous view", "1–7", "jump to view", "enter", "open / close details", "esc ← h", "back, clear search"}}
 	details := section{"Details", []string{"↑↓ pgup pgdn", "scroll", "j k", "next / previous task", "l", "expand / collapse activity"}}
-	act := section{"Selected task", []string{"x", "done (again: reopen)", "s", "change status", "p", "change priority", "n", "add a note", "u", "undo last change"}}
+	act := section{"Selected task", []string{"a", "answer the agent's question", "o", "copy claude --resume command", "x", "done (again: reopen)", "s", "change status", "p", "change priority", "n", "add a note", "u", "undo last change"}}
 	list := section{"List", []string{"c", "new task (quick add)", "/", "search", "g", "group: priority · due · status · repo", "r", "refresh", "q", "quit"}}
 
 	var keys string

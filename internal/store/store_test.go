@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -463,5 +464,91 @@ func TestMigrationFromV1(t *testing.T) {
 	s.AddLog(1, "agent", "note", "new work")
 	if got, _ := s.GetTask(1); !got.Unread {
 		t.Fatal("agent activity after upgrade should mark unread")
+	}
+}
+
+func TestReportsNeedsYouAndAnswers(t *testing.T) {
+	s := openTemp(t)
+	task := mustCreate(t, s, &Task{Title: "retry"})
+	other := mustCreate(t, s, &Task{Title: "untouched"})
+
+	if err := s.AddReport(&Report{TaskID: task.ID, Done: "  "}); err == nil {
+		t.Fatal("empty done accepted")
+	}
+	long := strings.Repeat("x", ReportFieldMax+1)
+	if err := s.AddReport(&Report{TaskID: task.ID, Done: "ok", Verified: long}); err == nil {
+		t.Fatal("over-long field accepted")
+	}
+
+	r := &Report{TaskID: task.ID, Done: " backoff added ", Verified: "212 passed", NeedsYou: "Which channel?"}
+	if err := s.AddReport(r); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetTask(task.ID)
+	if got.Report == nil || got.Report.Done != "backoff added" || !got.NeedsYou || !got.Unread {
+		t.Fatalf("after report: %+v / %+v", got, got.Report)
+	}
+	if ts, _ := s.ListTasks(Filter{NeedsYou: true}); len(ts) != 1 || ts[0].ID != task.ID {
+		t.Fatalf("needs-you filter: %+v", ts)
+	}
+	if b, _ := s.Brief(); len(b.NeedsYou) != 1 {
+		t.Fatalf("brief needs-you: %+v", b.NeedsYou)
+	}
+
+	if err := s.Answer(other.ID, "x", "user"); !errors.Is(err, ErrNothingToAnswer) {
+		t.Fatalf("answering a task without a question: %v", err)
+	}
+	if err := s.Answer(task.ID, "billing-alerts", "user"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetTask(task.ID)
+	if got.NeedsYou || got.Report.Answer != "billing-alerts" || got.Report.AnsweredAt == "" {
+		t.Fatalf("after answer: %+v", got.Report)
+	}
+	if last := got.Log[len(got.Log)-1]; last.Kind != "answer" || !strings.Contains(last.Text, "billing-alerts") {
+		t.Fatalf("answer not logged: %+v", last)
+	}
+	if err := s.Answer(task.ID, "again", "user"); !errors.Is(err, ErrNothingToAnswer) {
+		t.Fatal("a question can only be answered once")
+	}
+
+	// A newer report without a question clears needs-you; one with a new question sets it again.
+	s.AddReport(&Report{TaskID: task.ID, Done: "alerting wired", NeedsYou: "Ship it?"})
+	if got, _ := s.GetTask(task.ID); !got.NeedsYou || got.Report.NeedsYou != "Ship it?" {
+		t.Fatal("newest report should drive needs-you")
+	}
+	s.AddReport(&Report{TaskID: task.ID, Done: "shipped"})
+	if got, _ := s.GetTask(task.ID); got.NeedsYou {
+		t.Fatal("report without a question should clear needs-you")
+	}
+	if rs, _ := s.Reports(task.ID); len(rs) != 3 {
+		t.Fatalf("history: %d reports", len(rs))
+	}
+}
+
+func TestSessionsLinkAndCascade(t *testing.T) {
+	s := openTemp(t)
+	a := mustCreate(t, s, &Task{Title: "a"})
+	b := mustCreate(t, s, &Task{Title: "b"})
+
+	if err := s.LinkSession(a.ID, Session{}); err != nil {
+		t.Fatal("empty session ID should be a no-op")
+	}
+	s.LinkSession(a.ID, Session{ID: "s1", Name: "first name", LaunchDir: "/w"})
+	s.LinkSession(a.ID, Session{ID: "s2"})
+	s.LinkSession(b.ID, Session{ID: "s1", Name: ""}) // empty name keeps the stored one
+	s.LinkSession(a.ID, Session{ID: "s2", Name: "renamed"})
+
+	got, _ := s.GetTask(a.ID)
+	if len(got.Sessions) != 2 || got.Sessions[0].ID != "s2" || got.Sessions[0].Name != "renamed" {
+		t.Fatalf("sessions for a, newest first: %+v", got.Sessions)
+	}
+	bs, _ := s.TaskSessions(b.ID)
+	if len(bs) != 1 || bs[0].Name != "first name" || bs[0].LaunchDir != "/w" {
+		t.Fatalf("sessions for b: %+v", bs)
+	}
+	s.DeleteTask(a.ID)
+	if ss, _ := s.TaskSessions(a.ID); len(ss) != 0 {
+		t.Fatal("task-session links survived task delete")
 	}
 }

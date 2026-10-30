@@ -86,7 +86,7 @@ func TestEmptyInbox(t *testing.T) {
 	if !strings.Contains(m.View(), "TARS") {
 		t.Fatal("header missing")
 	}
-	m.setView(0)
+	m.setView(viewOpen)
 	if !strings.Contains(m.View(), "No open tasks. Press c to add one.") {
 		t.Fatalf("empty state missing:\n%s", m.View())
 	}
@@ -162,9 +162,9 @@ func TestViewsAndCounts(t *testing.T) {
 	if v := m.View(); !strings.Contains(v, "in inbox") || strings.Contains(v, "ready one") {
 		t.Fatalf("tab should switch to Inbox:\n%s", v)
 	}
-	press(m, "6")
+	press(m, "7")
 	if !strings.Contains(m.View(), "finished") {
-		t.Fatal("6 should show Done")
+		t.Fatal("7 should show Done")
 	}
 }
 
@@ -301,7 +301,7 @@ func TestStatusAndPriorityPickers(t *testing.T) {
 
 func TestQuickAdd(t *testing.T) {
 	m, st := newTestInbox(t, 120, 30)
-	press(m, "2") // from Inbox view
+	press(m, "3") // from Inbox view
 	press(m, "c")
 	typeText(m, "!high")
 	press(m, "enter")
@@ -359,7 +359,7 @@ func TestEveryLineFitsTheTerminal(t *testing.T) {
 	}
 	for _, size := range [][2]int{{50, 12}, {80, 24}, {119, 30}, {120, 30}, {200, 50}} {
 		m, _ := newTestInbox(t, size[0], size[1], tasks...)
-		for _, keys := range [][]string{{}, {"down", "down", "down"}, {"enter"}, {"enter", "l"}, {"?"}, {"g"}, {"6"}} {
+		for _, keys := range [][]string{{}, {"down", "down", "down"}, {"enter"}, {"enter", "l"}, {"?"}, {"g"}, {"7"}} {
 			press(m, keys...)
 			v := m.View()
 			lines := strings.Split(v, "\n")
@@ -455,12 +455,98 @@ func TestArrowsDoNotSwitchViews(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyRight})
 	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
 	press(m, "L", "H")
-	if m.view != 0 {
+	if m.view != viewOpen {
 		t.Fatalf("arrows/L/H should not change view, now on %s", views[m.view].name)
 	}
 	press(m, "enter")
 	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
 	if m.detail {
 		t.Fatal("← should close the detail")
+	}
+}
+
+func TestNeedsYouViewAnswerAndResume(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "tars.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	asked := &store.Task{Title: "Add retry to webhook sender", Priority: 2}
+	quiet := &store.Task{Title: "Write docs", Priority: 2}
+	st.CreateTask(asked)
+	st.CreateTask(quiet)
+	st.AddReport(&store.Report{TaskID: asked.ID, Done: "Backoff, 5 tries", NeedsYou: "Alert #oncall or #billing-alerts?"})
+	st.LinkSession(asked.ID, store.Session{ID: "sess-42", Name: "webhook retry"})
+
+	m, err := newInbox(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.now = func() time.Time { return fixedNow }
+	var copied string
+	m.copy = func(s string) error { copied = s; return nil }
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+
+	if m.view != viewNeedsYou {
+		t.Fatalf("should open on Needs you when an answer is waiting, got %s", views[m.view].name)
+	}
+	if !strings.Contains(m.topBar(), "Needs you 1") {
+		t.Fatalf("top bar: %s", m.topBar())
+	}
+	v := m.View()
+	if !strings.Contains(v, "? ") || !strings.Contains(v, "Add retry") || strings.Contains(v, "Write docs") {
+		t.Fatalf("needs-you list should show only the asking task, marked ?:\n%s", v)
+	}
+
+	press(m, "enter")
+	v = m.View()
+	for _, want := range []string{"REPORT", "Backoff, 5 tries", "Alert #oncall", "press a to answer", "SESSIONS", "webhook retry", "claude --resume sess-42"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("detail missing %q:\n%s", want, v)
+		}
+	}
+
+	press(m, "o")
+	if copied != "claude --resume sess-42" || !strings.Contains(m.footer(), "Copied") {
+		t.Fatalf("o should copy the resume command, got %q / %s", copied, m.footer())
+	}
+
+	press(m, "a")
+	if m.mode != modeAnswer || !strings.Contains(m.footer(), "Answer #1") {
+		t.Fatalf("a should open the answer prompt: %s", m.footer())
+	}
+	typeText(m, "billing-alerts")
+	press(m, "enter")
+	got, _ := st.GetTask(asked.ID)
+	if got.NeedsYou || got.Report.Answer != "billing-alerts" {
+		t.Fatalf("answer not saved: %+v", got.Report)
+	}
+	if !strings.Contains(m.topBar(), "Needs you 0") {
+		t.Fatalf("needs-you count should drop: %s", m.topBar())
+	}
+
+	// Tasks without a question or a session explain why nothing happened.
+	m.setView(viewOpen)
+	for m.selected() != nil && m.selected().ID != quiet.ID {
+		press(m, "down")
+	}
+	press(m, "a")
+	if m.mode != modeList || !strings.Contains(m.footer(), "no open question") {
+		t.Fatalf("a on a task without a question: %s", m.footer())
+	}
+	press(m, "o")
+	if !strings.Contains(m.footer(), "No Claude session") {
+		t.Fatalf("o on a task without a session: %s", m.footer())
+	}
+}
+
+func TestStartsOnOpenWhenNothingNeedsYou(t *testing.T) {
+	m, _ := newTestInbox(t, 100, 30, &store.Task{Title: "x"})
+	if m.view != viewOpen {
+		t.Fatalf("should start on Open, got %s", views[m.view].name)
+	}
+	m.setView(viewNeedsYou)
+	if !strings.Contains(m.View(), "Nothing needs you") {
+		t.Fatalf("empty needs-you state:\n%s", m.View())
 	}
 }

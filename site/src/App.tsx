@@ -7,6 +7,7 @@ import { Reveal, press } from "./Reveal";
 
 // Update when the repo is published under its final GitHub owner.
 const REPO = "actuallyakshat/tars";
+const OWNER = REPO.split("/")[0];
 
 // The hero's load-in: one short staggered sequence.
 const heroItem = {
@@ -148,17 +149,25 @@ export function App() {
           <ol className="install-steps">
             <Reveal as="li" delay={0.00}>
               <h3>Install the CLI</h3>
-              <p>One small binary. You don't need Go or anything else installed.</p>
-              <Command text={`brew tap ${REPO.split("/")[0]}/tap`} />
-              <Command text={`brew trust --cask ${REPO.split("/")[0]}/tap/tars`} />
+              <p>
+                One small binary. You don't need Go or anything else installed. On macOS, Homebrew asks you to
+                trust a new tap once before installing from it.
+              </p>
+              <Command text={`brew tap ${OWNER}/tap`} />
+              <Command text={`brew trust --cask ${OWNER}/tap/tars`} />
               <Command text="brew install --cask tars" />
               <p className="alt">
-                Or with Go: <code>go install github.com/{REPO}/cmd/tars@latest</code>
+                Check it worked with <code>tars --version</code>. On Linux or Windows, download a binary from{" "}
+                <a href={`https://github.com/${REPO}/releases/latest`}>GitHub Releases</a>, or build it with{" "}
+                <code>go install github.com/{REPO}/cmd/tars@latest</code>.
               </p>
             </Reveal>
             <Reveal as="li" delay={0.08}>
               <h3>Add the plugin to Claude Code</h3>
-              <p>Run these inside Claude Code.</p>
+              <p>
+                Run these inside Claude Code. Later, <code>/plugin marketplace update tars</code> gets you new
+                versions.
+              </p>
               <Command text={`/plugin marketplace add ${REPO}`} />
               <Command text="/plugin install tars@tars" />
             </Reveal>

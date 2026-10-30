@@ -99,6 +99,35 @@ var migrations = []string{
 	// Existing tasks count as seen so the marker starts clean.
 	`ALTER TABLE tasks ADD COLUMN seen_at TEXT NOT NULL DEFAULT '';
 	UPDATE tasks SET seen_at = updated_at;`,
+	// Reports are the short, structured outcomes agents write instead of long
+	// narratives; sessions link tasks to the Claude sessions that worked on them.
+	`CREATE TABLE reports (
+		id           INTEGER PRIMARY KEY AUTOINCREMENT,
+		task_id      INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		at           TEXT NOT NULL,
+		session_id   TEXT NOT NULL DEFAULT '',
+		done         TEXT NOT NULL,
+		verified     TEXT NOT NULL DEFAULT '',
+		needs_you    TEXT NOT NULL DEFAULT '',
+		next         TEXT NOT NULL DEFAULT '',
+		answer       TEXT NOT NULL DEFAULT '',
+		answered_at  TEXT NOT NULL DEFAULT ''
+	);
+	CREATE INDEX reports_task ON reports(task_id);
+	CREATE TABLE sessions (
+		id          TEXT PRIMARY KEY,
+		name        TEXT NOT NULL DEFAULT '',
+		launch_dir  TEXT NOT NULL DEFAULT '',
+		first_seen  TEXT NOT NULL,
+		last_seen   TEXT NOT NULL
+	);
+	CREATE TABLE task_sessions (
+		task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+		first_at    TEXT NOT NULL,
+		last_at     TEXT NOT NULL,
+		PRIMARY KEY (task_id, session_id)
+	);`,
 }
 
 // migrate runs pending migrations. Transactions are IMMEDIATE (see the DSN), so

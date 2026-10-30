@@ -32,25 +32,28 @@ func ValidStatus(s string) bool {
 var ErrNotFound = errors.New("not found")
 
 type Task struct {
-	ID         int64    `json:"id"`
-	Title      string   `json:"title"`
-	Body       string   `json:"body,omitempty"`
-	Status     string   `json:"status"`
-	Priority   int      `json:"priority"` // 0 = urgent … 3 = low
-	Jira       string   `json:"jira,omitempty"`
-	Repo       string   `json:"repo,omitempty"`
-	Tags       []string `json:"tags,omitempty"`
-	Due        string   `json:"due,omitempty"`
-	Acceptance string   `json:"acceptance,omitempty"`
-	Branch     string   `json:"branch,omitempty"`
-	Worktree   string   `json:"worktree,omitempty"`
-	WaitingOn  string   `json:"waiting_on,omitempty"`
-	FollowUp   string   `json:"follow_up,omitempty"`
-	CreatedAt  string   `json:"created_at"`
-	UpdatedAt  string   `json:"updated_at"`
-	DoneAt     string   `json:"done_at,omitempty"`
-	Unread     bool     `json:"unread,omitempty"` // agent logged something since the user last opened it
-	Log        []Entry  `json:"log,omitempty"`
+	ID         int64         `json:"id"`
+	Title      string        `json:"title"`
+	Body       string        `json:"body,omitempty"`
+	Status     string        `json:"status"`
+	Priority   int           `json:"priority"` // 0 = urgent … 3 = low
+	Jira       string        `json:"jira,omitempty"`
+	Repo       string        `json:"repo,omitempty"`
+	Tags       []string      `json:"tags,omitempty"`
+	Due        string        `json:"due,omitempty"`
+	Acceptance string        `json:"acceptance,omitempty"`
+	Branch     string        `json:"branch,omitempty"`
+	Worktree   string        `json:"worktree,omitempty"`
+	WaitingOn  string        `json:"waiting_on,omitempty"`
+	FollowUp   string        `json:"follow_up,omitempty"`
+	CreatedAt  string        `json:"created_at"`
+	UpdatedAt  string        `json:"updated_at"`
+	DoneAt     string        `json:"done_at,omitempty"`
+	Unread     bool          `json:"unread,omitempty"`    // agent logged something since the user last opened it
+	NeedsYou   bool          `json:"needs_you,omitempty"` // latest report asks the user something unanswered
+	Report     *Report       `json:"report,omitempty"`    // latest report; filled by GetTask
+	Sessions   []TaskSession `json:"sessions,omitempty"`
+	Log        []Entry       `json:"log,omitempty"`
 }
 
 type Entry struct {
@@ -70,7 +73,9 @@ func now() string { return time.Now().UTC().Format(tsFormat) }
 const taskCols = `id, title, body, status, priority, jira, repo, tags, due, acceptance,
 	branch, worktree, waiting_on, follow_up, created_at, updated_at, done_at,
 	EXISTS (SELECT 1 FROM task_log l WHERE l.task_id = tasks.id
-		AND l.author = 'agent' AND l.at > tasks.seen_at) AS unread`
+		AND l.author = 'agent' AND l.at > tasks.seen_at) AS unread,
+	COALESCE((SELECT r.needs_you != '' AND r.answered_at = '' FROM reports r
+		WHERE r.task_id = tasks.id ORDER BY r.id DESC LIMIT 1), 0) AS needs_you`
 
 type scanner interface{ Scan(...any) error }
 
@@ -79,7 +84,7 @@ func scanTask(r scanner) (*Task, error) {
 	var tags string
 	err := r.Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Jira, &t.Repo, &tags,
 		&t.Due, &t.Acceptance, &t.Branch, &t.Worktree, &t.WaitingOn, &t.FollowUp,
-		&t.CreatedAt, &t.UpdatedAt, &t.DoneAt, &t.Unread)
+		&t.CreatedAt, &t.UpdatedAt, &t.DoneAt, &t.Unread, &t.NeedsYou)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +130,13 @@ func (s *Store) GetTask(id int64) (*Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.Log, err = s.Log(id)
+	if t.Log, err = s.Log(id); err != nil {
+		return nil, err
+	}
+	if t.Report, err = s.LatestReport(id); err != nil {
+		return nil, err
+	}
+	t.Sessions, err = s.TaskSessions(id)
 	return t, err
 }
 
@@ -184,6 +195,7 @@ func (s *Store) DeleteTask(id int64) error {
 }
 
 type Filter struct {
+	NeedsYou    bool // only tasks whose latest report has an unanswered question
 	Statuses    []string
 	IncludeDone bool
 	HasJira     *bool
@@ -209,6 +221,9 @@ func (s *Store) ListTasks(f Filter) ([]*Task, error) {
 		} else {
 			where = append(where, "jira = ''")
 		}
+	}
+	if f.NeedsYou {
+		where = append(where, "needs_you")
 	}
 	if f.Repo != "" {
 		where = append(where, "repo = ?")

@@ -79,25 +79,23 @@ Up to 3 tasks can run at once, each delegated to a subagent (Agent tool) with it
 
 ## 5. Record the outcome
 
-Write the subagent's report to the task log:
+The user reads tars, not your transcript. Write a **report**: a few short lines, not a narrative. Each field is capped at 240 characters and the CLI rejects longer ones. The current Claude session is linked automatically, so the user can open it for details.
 
 ```bash
-tars note <id> --by agent -k sweep - <<'EOF'
-## Sweep result: <status>
-**Change:** …
-**Tests added:** …
-**Test run:** `<command>` → <N passed, M failed>
-**DoD:** ✔ … / ✘ …
-**Commit:** <sha> on tars/<id>-<slug>
-**Open questions:** …
-EOF
+tars report <id> \
+  --done "<what changed, one or two lines>" \
+  --verified "<test command>: <N passed, M failed> (<K new>)" \
+  --needs-you "<one question or decision for the user, if any>" \
+  --next "<what happens next>"
 ```
+
+Put the commit and branch in `--done` or `--next` if they matter, e.g. "Committed a41c9e2 on tars/15-webhook-retry". Omit `--needs-you` when there is nothing to ask.
 
 Then move the task according to the result:
 
 - **success** (tests pass, DoD met, committed): `tars mv <id> in-review --by agent`
-- **needs-input:** `tars block <id> --on "you: <the question, one line>" --by agent`
-- **failed:** leave it `in-progress`. The note must explain what failed and what to try next.
+- **needs-input:** keep the question in `--needs-you`, then `tars block <id> --on "you" --by agent`. It appears in the user's **Needs you** view, and they reply with `tars answer`.
+- **failed:** leave it `in-progress`. `--done` says what was attempted, `--next` says what to try next.
 
 ## 6. Learnings (optional, ask first)
 

@@ -145,8 +145,16 @@ func Task(t *store.Task, width int) string {
 		b.WriteString(headingSt.Render(title) + "\n")
 		b.WriteString(lipgloss.NewStyle().Width(inner).Render(strings.TrimSpace(body)) + "\n")
 	}
+	if r := t.Report; r != nil {
+		b.WriteString(headingSt.Render("Latest report") + Muted.Render("  "+Ago(r.At)) + "\n")
+		b.WriteString(reportLines(r, inner))
+	}
 	block("Description", t.Body)
 	block("Acceptance criteria", t.Acceptance)
+	if len(t.Sessions) > 0 {
+		b.WriteString(headingSt.Render("Sessions") + "\n")
+		b.WriteString(Sessions(t.Sessions))
+	}
 
 	if len(t.Log) > 0 {
 		b.WriteString(headingSt.Render("Log") + "\n")
@@ -168,7 +176,7 @@ func Brief(br *store.Brief, width int) string {
 	var b strings.Builder
 	b.WriteString(Accent.Render("TARS") + Muted.Render(" · "+br.Date) + "\n")
 
-	all := [][]*store.Task{br.InReview, br.InProgress, br.Overdue, br.DueToday, br.FollowUps, br.Ready, br.Inbox, br.DoneRecently}
+	all := [][]*store.Task{br.NeedsYou, br.InReview, br.InProgress, br.Overdue, br.DueToday, br.FollowUps, br.Ready, br.Inbox, br.DoneRecently}
 	var flat []*store.Task
 	for _, g := range all {
 		flat = append(flat, g...)
@@ -188,6 +196,7 @@ func Brief(br *store.Brief, width int) string {
 			b.WriteString(Row(t, width, iw) + "\n")
 		}
 	}
+	section("Needs your answer", br.NeedsYou, "questions an agent left you; answer with tars answer")
 	section("Waiting for your review", br.InReview, "agent work to check")
 	section("Overdue", br.Overdue, "")
 	section("Due today", br.DueToday, "")
@@ -245,4 +254,50 @@ func Profile(secs []store.Section, width int) string {
 	}
 	b.WriteString(sections(secs, width))
 	return cardSt.Render(strings.TrimRight(b.String(), "\n")) + "\n"
+}
+
+var needsSt = lipgloss.NewStyle().Foreground(statusColor[store.StatusInProgress]).Bold(true)
+
+// reportLines renders a report's fields as aligned label/value lines.
+func reportLines(r *store.Report, width int) string {
+	var b strings.Builder
+	wrap := lipgloss.NewStyle().Width(max(width-10, 20))
+	line := func(label string, st lipgloss.Style, v string) {
+		if v == "" {
+			return
+		}
+		parts := strings.Split(wrap.Render(v), "\n")
+		b.WriteString(Muted.Render(fmt.Sprintf("%-10s", label)) + st.Render(parts[0]) + "\n")
+		for _, p := range parts[1:] {
+			b.WriteString(strings.Repeat(" ", 10) + st.Render(p) + "\n")
+		}
+	}
+	line("done", lipgloss.NewStyle(), r.Done)
+	line("verified", lipgloss.NewStyle(), r.Verified)
+	switch {
+	case r.NeedsYou != "" && r.AnsweredAt == "":
+		line("needs you", needsSt, r.NeedsYou)
+	case r.NeedsYou != "":
+		line("asked", Muted, r.NeedsYou)
+		line("answered", lipgloss.NewStyle(), r.Answer)
+	}
+	line("next", lipgloss.NewStyle(), r.Next)
+	return b.String()
+}
+
+// Sessions lists Claude sessions with the command to reopen each one.
+func Sessions(ss []store.TaskSession) string {
+	if len(ss) == 0 {
+		return Muted.Render("  No Claude sessions linked yet.") + "\n"
+	}
+	var b strings.Builder
+	for _, s := range ss {
+		name := s.Name
+		if name == "" {
+			name = "Unnamed session"
+		}
+		b.WriteString("  " + Bold.Render(name) + Muted.Render("  "+Ago(s.LastAt)) + "\n")
+		b.WriteString("  " + Accent.Render("claude --resume "+s.ID) + "\n")
+	}
+	return b.String()
 }

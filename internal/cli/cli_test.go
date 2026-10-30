@@ -316,3 +316,75 @@ func TestBriefJSON(t *testing.T) {
 		t.Fatalf("human brief: %s", out)
 	}
 }
+
+func TestReportAnswerAndSessions(t *testing.T) {
+	e := newEnv(t)
+	// Pretend to run inside a Claude Code session with a transcript on disk.
+	cfg := t.TempDir()
+	proj := filepath.Join(cfg, "projects", "-work")
+	os.MkdirAll(proj, 0o755)
+	os.WriteFile(filepath.Join(proj, "sess-42.jsonl"), []byte(
+		`{"type":"user","cwd":"/work"}`+"\n"+`{"type":"custom-title","customTitle":"webhook retry"}`+"\n"), 0o644)
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sess-42")
+
+	e.ok("add", "Add retry to webhook sender")
+	e.fails("report", "1")                                     // --done is required
+	e.fails("report", "1", "--done", strings.Repeat("x", 241)) // over the cap
+	e.fails("report", "9", "--done", "nope")                   // unknown task
+
+	e.ok("report", "1", "--done", "Backoff, 5 tries", "--verified", "212 passed",
+		"--needs-you", "Alert #oncall or #billing-alerts?", "--next", "Open PR")
+	tk := e.task("1")
+	if tk.Report == nil || tk.Report.SessionID != "sess-42" || !tk.NeedsYou {
+		t.Fatalf("report: %+v", tk.Report)
+	}
+	if len(tk.Sessions) != 1 || tk.Sessions[0].Name != "webhook retry" || tk.Sessions[0].LaunchDir != "/work" {
+		t.Fatalf("session should be linked with its name and folder: %+v", tk.Sessions)
+	}
+
+	if n := len(decode[[]store.Task](t, e.ok("ls", "--needs-you", "--json"))); n != 1 {
+		t.Fatalf("ls --needs-you: %d", n)
+	}
+	human := e.ok("show", "1")
+	for _, want := range []string{"Latest report", "Backoff, 5 tries", "needs you", "claude --resume sess-42", "webhook retry"} {
+		if !strings.Contains(human, want) {
+			t.Errorf("show missing %q:\n%s", want, human)
+		}
+	}
+	if md := e.ok("context", "1"); !strings.Contains(md, "waiting on the user") || !strings.Contains(md, "claude --resume sess-42") {
+		t.Fatalf("context should carry the report and session:\n%s", md)
+	}
+
+	e.ok("answer", "#1", "billing-alerts")
+	if tk := e.task("1"); tk.NeedsYou || tk.Report.Answer != "billing-alerts" {
+		t.Fatalf("answer: %+v", tk.Report)
+	}
+	e.fails("answer", "1", "again")
+	if md := e.ok("context", "1"); !strings.Contains(md, "user answered:** billing-alerts") {
+		t.Fatalf("context should show the answer:\n%s", md)
+	}
+
+	ss := decode[[]store.TaskSession](t, e.ok("sessions", "1", "--json"))
+	if len(ss) != 1 || ss[0].ID != "sess-42" {
+		t.Fatalf("sessions: %+v", ss)
+	}
+
+	// Any change made from inside a session links it, not only reports.
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "sess-43")
+	e.ok("add", "Second task")
+	e.ok("note", "1", "follow-up from another session")
+	if tk := e.task("2"); len(tk.Sessions) != 1 || tk.Sessions[0].ID != "sess-43" {
+		t.Fatalf("add should link the session: %+v", tk.Sessions)
+	}
+	if tk := e.task("1"); len(tk.Sessions) != 2 || tk.Sessions[0].ID != "sess-43" {
+		t.Fatalf("note should link the session, newest first: %+v", tk.Sessions)
+	}
+
+	// Outside Claude Code nothing is linked.
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	e.ok("add", "Third task")
+	if tk := e.task("3"); len(tk.Sessions) != 0 {
+		t.Fatalf("no session expected: %+v", tk.Sessions)
+	}
+}

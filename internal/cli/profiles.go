@@ -301,6 +301,29 @@ func contextMarkdown(c agentContext) string {
 		if t.Acceptance != "" {
 			fmt.Fprintf(&b, "\n### Acceptance criteria\n\n%s\n", strings.TrimSpace(t.Acceptance))
 		}
+		if r := t.Report; r != nil {
+			b.WriteString("\n### Latest report\n\n")
+			fmt.Fprintf(&b, "- **done:** %s\n", r.Done)
+			row("verified", r.Verified)
+			row("next", r.Next)
+			if r.NeedsYou != "" {
+				if r.AnsweredAt != "" {
+					fmt.Fprintf(&b, "- **asked the user:** %s\n- **user answered:** %s\n", r.NeedsYou, r.Answer)
+				} else {
+					fmt.Fprintf(&b, "- **waiting on the user:** %s\n", r.NeedsYou)
+				}
+			}
+		}
+		if len(t.Sessions) > 0 {
+			b.WriteString("\n### Sessions that worked on this\n\n")
+			for _, s := range t.Sessions {
+				name := s.Name
+				if name == "" {
+					name = "(unnamed)"
+				}
+				fmt.Fprintf(&b, "- %s: `claude --resume %s`\n", name, s.ID)
+			}
+		}
 		if len(t.Log) > 0 {
 			b.WriteString("\n### Log\n\n")
 			for _, e := range t.Log {

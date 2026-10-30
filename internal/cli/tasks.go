@@ -150,6 +150,9 @@ func addCmd(a *app) *cobra.Command {
 			if err := a.st.CreateTask(t); err != nil {
 				return err
 			}
+			if err := a.linkSession(t.ID, ""); err != nil {
+				return err
+			}
 			return a.emit(t, func() string {
 				return ui.Success(fmt.Sprintf("Added #%d %s", t.ID, ui.Bold.Render(t.Title))) + "\n"
 			})
@@ -172,7 +175,7 @@ func (a *app) list(f store.Filter) error {
 
 func lsCmd(a *app) *cobra.Command {
 	var statuses []string
-	var all, jira, noJira bool
+	var all, jira, noJira, needsYou bool
 	var f store.Filter
 	cmd := &cobra.Command{
 		Use:     "ls",
@@ -197,12 +200,14 @@ func lsCmd(a *app) *cobra.Command {
 				f.HasJira = &jira
 			}
 			f.IncludeDone = all
+			f.NeedsYou = needsYou
 			return a.list(f)
 		},
 	}
 	fl := cmd.Flags()
 	fl.StringSliceVarP(&statuses, "status", "s", nil, "only these statuses (comma separated)")
 	fl.BoolVar(&all, "all", false, "include done tasks")
+	fl.BoolVar(&needsYou, "needs-you", false, "only tasks with an unanswered question from an agent")
 	fl.BoolVar(&jira, "jira", false, "only tasks with a Jira key")
 	fl.BoolVar(&noJira, "no-jira", false, "only tasks without a Jira key")
 	fl.StringVarP(&f.Repo, "repo", "r", "", "only tasks for this repo")
@@ -269,6 +274,9 @@ func editCmd(a *app) *cobra.Command {
 			if err := a.save(t, prev, by); err != nil {
 				return err
 			}
+			if err := a.linkSession(t.ID, ""); err != nil {
+				return err
+			}
 			// Agent edits are logged so the TUI can flag them as unread.
 			if by == "agent" {
 				var fields []string
@@ -308,6 +316,9 @@ func setStatus(a *app, ids []string, status, by string) error {
 			return err
 		}
 		if err := a.st.SetStatus(t, status, by); err != nil {
+			return err
+		}
+		if err := a.linkSession(t.ID, ""); err != nil {
 			return err
 		}
 		t.Log = nil
@@ -384,6 +395,9 @@ progress, test results and where they stopped. Text "-" reads stdin.`,
 			if err := a.st.AddLog(id, by, kind, text); err != nil {
 				return err
 			}
+			if err := a.linkSession(id, ""); err != nil {
+				return err
+			}
 			return a.emit(map[string]any{"id": id, "logged": true}, func() string {
 				return ui.Success(fmt.Sprintf("Noted on #%d", id)) + "\n"
 			})
@@ -423,6 +437,9 @@ func blockCmd(a *app) *cobra.Command {
 				if err := a.st.AddLog(id, by, "note", "Blocked: "+reason); err != nil {
 					return err
 				}
+			}
+			if err := a.linkSession(id, ""); err != nil {
+				return err
 			}
 			t.Log = nil
 			return a.emit(t, func() string {

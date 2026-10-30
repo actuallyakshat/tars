@@ -5,6 +5,7 @@ import "time"
 // Brief groups open work into the buckets a morning summary cares about.
 type Brief struct {
 	Date         string  `json:"date"`
+	NeedsYou     []*Task `json:"needs_you"` // latest report asks the user something unanswered
 	InReview     []*Task `json:"in_review"`
 	InProgress   []*Task `json:"in_progress"`
 	Overdue      []*Task `json:"overdue"`
@@ -32,6 +33,9 @@ func (s *Store) Brief() (*Brief, error) {
 				b.DoneRecently = append(b.DoneRecently, t)
 			}
 			continue
+		}
+		if t.NeedsYou {
+			b.NeedsYou = append(b.NeedsYou, t)
 		}
 		switch t.Status {
 		case StatusInReview:
