@@ -30,7 +30,7 @@ and never override, the repo's own CLAUDE.md / AGENTS.md.
 
 Suggested sections: ` + strings.Join(store.RepoSections, ", ") + `. Any name works.`,
 	}
-	cmd.AddCommand(repoSetCmd(a), repoShowCmd(a), repoLsCmd(a), repoRmCmd(a))
+	cmd.AddCommand(repoSetCmd(a), repoShowCmd(a), repoLsCmd(a), repoMvCmd(a), repoRmCmd(a))
 	return cmd
 }
 
@@ -114,6 +114,27 @@ func repoLsCmd(a *app) *cobra.Command {
 				rs = []*store.Repo{}
 			}
 			return a.emit(rs, func() string { return ui.Repos(rs) })
+		},
+	}
+}
+
+func repoMvCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:     "mv <name> <new-name>",
+		Short:   "Rename a repo profile; its tasks move with it",
+		Example: `  tars repo mv billing billing-svc`,
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := a.st.RenameRepo(args[0], args[1]); err != nil {
+				return err
+			}
+			r, err := a.st.GetRepo(strings.TrimSpace(args[1]))
+			if err != nil {
+				return err
+			}
+			return a.emit(r, func() string {
+				return ui.Success("Renamed repo profile "+args[0]+" to "+ui.Accent.Render(r.Name)) + "\n"
+			})
 		},
 	}
 }
@@ -293,6 +314,7 @@ func contextMarkdown(c agentContext) string {
 		row("due", t.Due)
 		row("branch", t.Branch)
 		row("worktree", t.Worktree)
+		row("pr", t.PR)
 		row("waiting on", t.WaitingOn)
 		row("follow up", t.FollowUp)
 		if t.Body != "" {

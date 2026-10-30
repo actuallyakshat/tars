@@ -126,6 +126,7 @@ pub struct TaskEdit {
     pub jira: Option<String>,
     pub repo: Option<String>,
     pub due: Option<String>,
+    pub pr: Option<String>,
     pub tag: Vec<String>,
     pub untag: Vec<String>,
 }
@@ -196,8 +197,37 @@ pub mod args {
         vec!["repo".into(), "ls".into()]
     }
 
+    pub fn show_repo(name: &str) -> Vec<String> {
+        vec!["repo".into(), "show".into(), "--".into(), name.into()]
+    }
+
+    pub fn profile() -> Vec<String> {
+        vec!["profile".into(), "show".into()]
+    }
+
     pub fn set_repo(name: &str, path: &str) -> Vec<String> {
         vec!["repo".into(), "set".into(), format!("--path={path}"), "--".into(), name.trim().into()]
+    }
+
+    pub fn rename_repo(from: &str, to: &str) -> Vec<String> {
+        vec!["repo".into(), "mv".into(), "--".into(), from.into(), to.trim().into()]
+    }
+
+    /// Empty text removes the section.
+    pub fn set_repo_section(name: &str, section: &str, text: &str) -> Vec<String> {
+        vec![
+            "repo".into(),
+            "set".into(),
+            format!("--section={}", section.trim()),
+            format!("--text={text}"),
+            "--".into(),
+            name.into(),
+        ]
+    }
+
+    /// Empty text removes the section.
+    pub fn set_profile_section(section: &str, text: &str) -> Vec<String> {
+        vec!["profile".into(), "set".into(), format!("--text={text}"), "--".into(), section.trim().into()]
     }
 
     pub fn remove_repo(name: &str) -> Vec<String> {
@@ -215,6 +245,7 @@ pub mod args {
             ("jira", &e.jira),
             ("repo", &e.repo),
             ("due", &e.due),
+            ("pr", &e.pr),
         ] {
             if let Some(v) = v {
                 a.push(format!("--{flag}={v}"));
@@ -335,6 +366,37 @@ impl Tars {
         parse_object(&self.run(&args::set_repo(name, &full.to_string_lossy()))?)
     }
 
+    /// A repo profile with its sections (definition of done, tests, gotchas…).
+    pub fn show_repo(&self, name: &str) -> Result<Value> {
+        parse_object(&self.run(&args::show_repo(name))?)
+    }
+
+    /// The personal profile: sections that apply in every repo.
+    pub fn profile(&self) -> Result<Value> {
+        let v = parse_json(&self.run(&args::profile())?)?;
+        match &v {
+            Value::Array(items) if items.iter().all(|s| s.get("name").is_some()) => Ok(v),
+            _ => Err(CliError::new(ErrorKind::BadOutput, "Expected profile sections from tars.")),
+        }
+    }
+
+    pub fn rename_repo(&self, from: &str, to: &str) -> Result<Value> {
+        if to.trim().is_empty() {
+            return Err(CliError::new(ErrorKind::Failed, "A repo needs a name."));
+        }
+        parse_object(&self.run(&args::rename_repo(from, to))?)
+    }
+
+    pub fn set_repo_section(&self, name: &str, section: &str, text: &str) -> Result<Value> {
+        check_section(section, text)?;
+        parse_object(&self.run(&args::set_repo_section(name, section, text))?)
+    }
+
+    pub fn set_profile_section(&self, section: &str, text: &str) -> Result<Value> {
+        check_section(section, text)?;
+        parse_object(&self.run(&args::set_profile_section(section, text))?)
+    }
+
     pub fn remove_repo(&self, name: &str) -> Result<Value> {
         parse_object(&self.run(&args::remove_repo(name))?)
     }
@@ -364,6 +426,18 @@ impl Tars {
     pub fn seen(&self, id: i64) -> Result<Value> {
         parse_object(&self.run(&args::seen(id))?)
     }
+}
+
+/// A preference needs a name. Text that is exactly "-" would make the CLI read
+/// stdin, which the app never feeds, and so would wipe the section.
+fn check_section(section: &str, text: &str) -> Result<()> {
+    if section.trim().is_empty() {
+        return Err(CliError::new(ErrorKind::Failed, "A preference needs a name."));
+    }
+    if text.trim() == "-" {
+        return Err(CliError::new(ErrorKind::Failed, "A preference can't be just \"-\"."));
+    }
+    Ok(())
 }
 
 /// Tries each candidate and returns the first one new enough. If every one is
@@ -412,6 +486,19 @@ pub fn classify_failure(bin: &Path, output: &str) -> CliError {
                 "{} is too old for this app: it has no agent reports or session links ({msg}). \
                  Upgrade with `brew upgrade --cask tars`, or build it from source with \
                  `go install ./cmd/tars` and set TARS_BIN to the new binary.",
+                bin.display()
+            ),
+        );
+    }
+    // The database was written by a newer tars than this binary. Counting it
+    // as too old makes the app try the next binary it found, and if none
+    // works, say to upgrade instead of showing a raw error.
+    if lower.contains("written by a newer tars") {
+        return CliError::new(
+            ErrorKind::TooOld,
+            format!(
+                "{} is older than your task database. Upgrade with `brew upgrade --cask tars`, or \
+                 build it from source with `go install ./cmd/tars`.",
                 bin.display()
             ),
         );
@@ -592,6 +679,19 @@ mod tests {
     }
 
     #[test]
+    fn preference_args_keep_text_in_one_flag() {
+        assert_eq!(
+            args::set_repo_section("billing", " tests ", "-v first\nmake test"),
+            ["repo", "set", "--section=tests", "--text=-v first\nmake test", "--", "billing"]
+        );
+        assert_eq!(args::set_profile_section("style", ""), ["profile", "set", "--text=", "--", "style"]);
+        assert_eq!(args::rename_repo("a", " b "), ["repo", "mv", "--", "a", "b"]);
+        let t = Tars::new("/nonexistent/tars");
+        assert!(t.set_profile_section("style", " - ").is_err());
+        assert!(t.set_repo_section("x", " ", "y").is_err());
+    }
+
+    #[test]
     fn parses_fixtures() {
         let list = parse_list(include_str!("../tests/fixtures/ls.json")).unwrap();
         let items = list.as_array().unwrap();
@@ -625,6 +725,12 @@ mod tests {
         assert!(e.message.contains("TARS_BIN"));
         let e = classify_failure(bin, include_str!("../tests/fixtures/old-unknown-command.txt"));
         assert_eq!(e.kind, ErrorKind::TooOld);
+        let e = classify_failure(
+            bin,
+            "Error: open /x/tars.db: migrate: this database was written by a newer tars (schema 5, this tars knows 3); upgrade tars\n",
+        );
+        assert_eq!(e.kind, ErrorKind::TooOld);
+        assert!(e.message.contains("older than your task database"), "{}", e.message);
     }
 
     #[test]

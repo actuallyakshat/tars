@@ -44,6 +44,7 @@ type Task struct {
 	Acceptance string        `json:"acceptance,omitempty"`
 	Branch     string        `json:"branch,omitempty"`
 	Worktree   string        `json:"worktree,omitempty"`
+	PR         string        `json:"pr,omitempty"`
 	WaitingOn  string        `json:"waiting_on,omitempty"`
 	FollowUp   string        `json:"follow_up,omitempty"`
 	CreatedAt  string        `json:"created_at"`
@@ -71,7 +72,7 @@ const tsFormat = "2006-01-02T15:04:05.000000Z07:00"
 func now() string { return time.Now().UTC().Format(tsFormat) }
 
 const taskCols = `id, title, body, status, priority, jira, repo, tags, due, acceptance,
-	branch, worktree, waiting_on, follow_up, created_at, updated_at, done_at,
+	branch, worktree, pr, waiting_on, follow_up, created_at, updated_at, done_at,
 	EXISTS (SELECT 1 FROM task_log l WHERE l.task_id = tasks.id
 		AND l.author = 'agent' AND l.at > tasks.seen_at) AS unread,
 	COALESCE((SELECT r.needs_you != '' AND r.answered_at = '' FROM reports r
@@ -83,7 +84,7 @@ func scanTask(r scanner) (*Task, error) {
 	var t Task
 	var tags string
 	err := r.Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Jira, &t.Repo, &tags,
-		&t.Due, &t.Acceptance, &t.Branch, &t.Worktree, &t.WaitingOn, &t.FollowUp,
+		&t.Due, &t.Acceptance, &t.Branch, &t.Worktree, &t.PR, &t.WaitingOn, &t.FollowUp,
 		&t.CreatedAt, &t.UpdatedAt, &t.DoneAt, &t.Unread, &t.NeedsYou)
 	if err != nil {
 		return nil, err
@@ -111,10 +112,10 @@ func (s *Store) CreateTask(t *Task) error {
 	}
 	t.CreatedAt, t.UpdatedAt = now(), now()
 	res, err := s.db.Exec(`INSERT INTO tasks (title, body, status, priority, jira, repo, tags, due,
-		acceptance, branch, worktree, waiting_on, follow_up, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		acceptance, branch, worktree, pr, waiting_on, follow_up, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.Title, t.Body, t.Status, t.Priority, t.Jira, t.Repo, strings.Join(t.Tags, ","), t.Due,
-		t.Acceptance, t.Branch, t.Worktree, t.WaitingOn, t.FollowUp, t.CreatedAt, t.UpdatedAt)
+		t.Acceptance, t.Branch, t.Worktree, t.PR, t.WaitingOn, t.FollowUp, t.CreatedAt, t.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -152,10 +153,10 @@ func (s *Store) SaveTask(t *Task) error {
 	}
 	t.UpdatedAt = now()
 	_, err := s.db.Exec(`UPDATE tasks SET title=?, body=?, status=?, priority=?, jira=?, repo=?, tags=?,
-		due=?, acceptance=?, branch=?, worktree=?, waiting_on=?, follow_up=?, updated_at=?, done_at=?
+		due=?, acceptance=?, branch=?, worktree=?, pr=?, waiting_on=?, follow_up=?, updated_at=?, done_at=?
 		WHERE id=?`,
 		t.Title, t.Body, t.Status, t.Priority, t.Jira, t.Repo, strings.Join(t.Tags, ","), t.Due,
-		t.Acceptance, t.Branch, t.Worktree, t.WaitingOn, t.FollowUp, t.UpdatedAt, t.DoneAt, t.ID)
+		t.Acceptance, t.Branch, t.Worktree, t.PR, t.WaitingOn, t.FollowUp, t.UpdatedAt, t.DoneAt, t.ID)
 	return err
 }
 

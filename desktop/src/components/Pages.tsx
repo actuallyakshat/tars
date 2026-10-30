@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { CliStatus, NewTask, Repo, Task, TaskEdit } from "../api";
+import type { CliStatus, NewTask, Task, TaskEdit } from "../api";
 import { SidebarToggle } from "./Panes";
 import { PRIORITIES, STATUS, STATUSES, clampPriority, priorityMark } from "../model";
 
 // Full pages that replace the list and detail panes: New task, Settings and
 // Legend. Esc or the back button returns to the list.
 
-function Page({ title, onBack, children, full }: { title: string; onBack: () => void; children: ReactNode; full?: boolean }) {
+export function Page({ title, onBack, children, full }: { title: string; onBack: () => void; children: ReactNode; full?: boolean }) {
   return (
     <main className="page" aria-label={title}>
       <div className="drag page-top" data-tauri-drag-region>
@@ -36,9 +36,9 @@ const DUE_CHIPS = [
 ] as const;
 
 // The fields both New task and Edit task fill in, as typed.
-type Draft = Required<Omit<NewTask, "priority">> & { priority: string };
+type Draft = Required<Omit<NewTask, "priority">> & { priority: string; pr: string };
 
-const EMPTY: Draft = { title: "", body: "", priority: "normal", due: "", jira: "", repo: "", tags: "" };
+const EMPTY: Draft = { title: "", body: "", priority: "normal", due: "", jira: "", repo: "", tags: "", pr: "" };
 
 const tagList = (s: string) => [...new Set(s.split(",").map((t) => t.trim()).filter(Boolean))];
 
@@ -47,6 +47,7 @@ function TaskForm({
   initial,
   repos,
   submitLabel,
+  showPR = false,
   onSubmit,
   onBack,
 }: {
@@ -54,6 +55,8 @@ function TaskForm({
   initial: Draft;
   repos: string[];
   submitLabel: string;
+  /** A new task has no pull request yet; editing can set one. */
+  showPR?: boolean;
   onSubmit: (d: Draft) => Promise<boolean>;
   onBack: () => void;
 }) {
@@ -161,10 +164,17 @@ function TaskForm({
             </datalist>
           </label>
 
-          <label className="field span-2">
+          <label className={"field" + (showPR ? "" : " span-2")}>
             <span className="field-label">Tags</span>
             <input value={t.tags} onChange={(e) => set("tags", e.target.value)} placeholder="perf, backend" />
           </label>
+
+          {showPR && (
+            <label className="field">
+              <span className="field-label">Pull request</span>
+              <input className="mono" value={t.pr} onChange={(e) => set("pr", e.target.value)} placeholder="https://github.com/acme/billing/pull/412" />
+            </label>
+          )}
         </div>
 
         <div className="page-actions">
@@ -191,7 +201,7 @@ export function NewTaskPage({
 }) {
   // Only the fields filled in.
   const submit = (d: Draft) =>
-    onAdd(Object.fromEntries(Object.entries(d).filter(([, v]) => v.trim())) as unknown as NewTask);
+    onAdd(Object.fromEntries(Object.entries(d).filter(([k, v]) => k !== "pr" && v.trim())) as unknown as NewTask);
   return <TaskForm heading="New task" initial={EMPTY} repos={repos} submitLabel="Create task" onSubmit={submit} onBack={onBack} />;
 }
 
@@ -199,7 +209,7 @@ export function NewTaskPage({
 export function taskChanges(task: Task, d: Draft): TaskEdit {
   const before = draftOf(task);
   const e: TaskEdit = {};
-  for (const k of ["title", "body", "jira", "repo", "priority"] as const) {
+  for (const k of ["title", "body", "jira", "repo", "priority", "pr"] as const) {
     if (d[k].trim() !== before[k]) e[k] = d[k].trim();
   }
   if (d.due.trim() !== before.due) e.due = d.due.trim() || "none";
@@ -221,6 +231,7 @@ function draftOf(t: Task): Draft {
     jira: t.jira ?? "",
     repo: t.repo ?? "",
     tags: (t.tags ?? []).join(", "),
+    pr: t.pr ?? "",
   };
 }
 
@@ -241,36 +252,39 @@ export function EditTaskPage({
       initial={draftOf(task)}
       repos={repos}
       submitLabel="Save changes"
+      showPR
       onSubmit={(d) => onSave(taskChanges(task, d))}
       onBack={onBack}
     />
   );
 }
 
-type SettingsSection = "general" | "repos" | "integrations" | "shortcuts";
+type SettingsSection = "general" | "integrations" | "shortcuts";
 
-export interface RepoActions {
-  repos: Repo[];
-  onSetRepo: (name: string, path: string) => Promise<boolean>;
-  onRemoveRepo: (name: string) => Promise<boolean>;
-  onChooseFolder: () => Promise<string | null>;
-}
+/** How a task opens: beside the list, or filling the window. */
+export type OpenMode = "pane" | "full";
+
+const OPEN_MODES: { id: OpenMode; label: string; help: string }[] = [
+  { id: "pane", label: "Side pane", help: "The list stays visible and the task opens beside it." },
+  { id: "full", label: "Full screen", help: "The task fills the window. Esc takes you back to the list." },
+];
 
 export function SettingsPage({
-  initialSection = "general",
   jiraBase,
   cli,
+  openMode,
+  onOpenMode,
   onSaveJira,
   onBack,
-  ...repoActions
 }: {
   jiraBase: string;
   cli: CliStatus | null;
+  openMode: OpenMode;
+  onOpenMode: (m: OpenMode) => void;
   onSaveJira: (base: string) => void;
   onBack: () => void;
-  initialSection?: SettingsSection;
-} & RepoActions) {
-  const [section, setSection] = useState<SettingsSection>(initialSection);
+}) {
+  const [section, setSection] = useState<SettingsSection>("general");
   const [base, setBase] = useState(jiraBase);
   const [saved, setSaved] = useState(false);
   const dirty = base.trim() !== jiraBase;
@@ -282,7 +296,6 @@ export function SettingsPage({
           {(
             [
               ["general", "General"],
-              ["repos", "Repos"],
               ["integrations", "Integrations"],
               ["shortcuts", "Keyboard shortcuts"],
             ] as const
@@ -296,7 +309,22 @@ export function SettingsPage({
         <div className="settings-content">
           {section === "general" && (
             <section aria-label="General">
-              <h2>tars command-line tool</h2>
+              <h2 id="open-mode-label">Opening tasks</h2>
+              <p className="muted">What happens when you open a task from the list.</p>
+              <div className="choice-cards" role="radiogroup" aria-labelledby="open-mode-label">
+                {OPEN_MODES.map((m) => (
+                  <label key={m.id} className={"choice-card" + (openMode === m.id ? " on" : "")}>
+                    <input type="radio" name="open-mode" checked={openMode === m.id} onChange={() => onOpenMode(m.id)} />
+                    <ModeSketch mode={m.id} />
+                    <span className="choice-text">
+                      <span className="choice-label">{m.label}</span>
+                      <span className="choice-help">{m.help}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              <h2 className="settings-gap">tars command-line tool</h2>
               <p className="muted">The app reads and changes tasks only through this binary.</p>
               <dl className="settings-rows">
                 <dt>Binary</dt>
@@ -309,8 +337,6 @@ export function SettingsPage({
               </p>
             </section>
           )}
-
-          {section === "repos" && <RepoSettings {...repoActions} />}
 
           {section === "integrations" && (
             <section aria-label="Integrations">
@@ -358,117 +384,28 @@ export function SettingsPage({
   );
 }
 
-const basename = (p: string) => p.replace(/\/+$/, "").split("/").pop() ?? "";
-
-// Repo profiles: a name tasks use, and the folder it lives in, so agents
-// started inside that folder pick up the right profile.
-function RepoSettings({ repos, onSetRepo, onRemoveRepo, onChooseFolder }: RepoActions) {
-  const [name, setName] = useState("");
-  const [path, setPath] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState<string | null>(null);
-
-  const add = async () => {
-    if (!name.trim() || !path.trim() || busy) return;
-    setBusy(true);
-    const ok = await onSetRepo(name.trim(), path.trim());
-    setBusy(false);
-    if (ok) {
-      setName("");
-      setPath("");
-    }
-  };
-
-  const browse = async () => {
-    const dir = await onChooseFolder();
-    if (!dir) return;
-    setPath(dir);
-    if (!name.trim()) setName(basename(dir));
-  };
-
-  const repoint = async (repo: string) => {
-    const dir = await onChooseFolder();
-    if (dir) await onSetRepo(repo, dir);
-  };
-
+// A tiny drawing of the window for each choice: sidebar, list, task.
+function ModeSketch({ mode }: { mode: OpenMode }) {
   return (
-    <section aria-label="Repos">
-      <h2>Repos</h2>
-      <p className="muted">
-        Tell tars where each repo lives. Agents working inside that folder get its profile, and new tasks can pick it as
-        their repo.
-      </p>
-      {repos.length === 0 ? (
-        <p className="hint">No repos yet. Add the first one below.</p>
-      ) : (
-        <ul className="repo-list" aria-label="Your repos">
-          {repos.map((r) => (
-            <li key={r.name}>
-              <div className="repo-text">
-                <span className="repo-name">{r.name}</span>
-                <span className={"repo-path mono" + (r.path ? "" : " muted")}>{r.path || "No folder set"}</span>
-              </div>
-              {confirming === r.name ? (
-                <span className="repo-actions">
-                  <span className="muted">Delete the profile and its notes?</span>
-                  <button className="ghost" onClick={() => setConfirming(null)}>
-                    Keep
-                  </button>
-                  <button
-                    className="danger"
-                    onClick={async () => {
-                      setConfirming(null);
-                      await onRemoveRepo(r.name);
-                    }}
-                  >
-                    Delete {r.name}
-                  </button>
-                </span>
-              ) : (
-                <span className="repo-actions">
-                  <button className="ghost" onClick={() => void repoint(r.name)}>
-                    {r.path ? "Change folder…" : "Set folder…"}
-                  </button>
-                  <button className="ghost" onClick={() => setConfirming(r.name)} aria-label={`Remove ${r.name}`}>
-                    Remove
-                  </button>
-                </span>
-              )}
-            </li>
+    <svg className="mode-sketch" width="96" height="60" viewBox="0 0 96 60" aria-hidden="true">
+      <rect x="0.5" y="0.5" width="95" height="59" rx="5" fill="var(--surface)" stroke="currentColor" strokeOpacity="0.35" />
+      {mode === "pane" ? (
+        <>
+          <rect x="4" y="4" width="16" height="52" rx="2" fill="currentColor" opacity="0.08" />
+          {[10, 18, 26, 34].map((y) => (
+            <rect key={y} x="24" y={y} width="28" height="4" rx="1" fill="currentColor" opacity={y === 18 ? 0.45 : 0.18} />
           ))}
-        </ul>
+          <rect x="57" y="4" width="35" height="52" rx="2" fill="currentColor" opacity="0.14" />
+        </>
+      ) : (
+        <>
+          <rect x="4" y="4" width="88" height="52" rx="2" fill="currentColor" opacity="0.14" />
+          <rect x="12" y="12" width="40" height="5" rx="1" fill="currentColor" opacity="0.45" />
+          <rect x="12" y="22" width="64" height="3" rx="1" fill="currentColor" opacity="0.2" />
+          <rect x="12" y="29" width="56" height="3" rx="1" fill="currentColor" opacity="0.2" />
+        </>
       )}
-
-      <form
-        className="repo-add"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void add();
-        }}
-      >
-        <h3>Add a repo</h3>
-        <div className="repo-add-row">
-          <label className="field">
-            <span className="field-label">Folder</span>
-            <span className="path-field">
-              <input className="mono" value={path} onChange={(e) => setPath(e.target.value)} placeholder="~/code/billing-svc" />
-              <button type="button" className="ghost" onClick={() => void browse()}>
-                Choose…
-              </button>
-            </span>
-          </label>
-          <label className="field">
-            <span className="field-label">Name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="billing-svc" />
-          </label>
-        </div>
-        <div className="settings-save">
-          <button type="submit" className="primary" disabled={!name.trim() || !path.trim() || busy}>
-            Add repo
-          </button>
-        </div>
-      </form>
-    </section>
+    </svg>
   );
 }
 

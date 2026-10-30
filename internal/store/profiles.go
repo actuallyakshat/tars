@@ -114,6 +114,41 @@ func (s *Store) ListRepos() ([]*Repo, error) {
 	return out, rows.Err()
 }
 
+// RenameRepo renames a repo profile. Its sections follow (ON UPDATE CASCADE)
+// and tasks that named the old repo are moved to the new name.
+func (s *Store) RenameRepo(from, to string) error {
+	to = strings.TrimSpace(to)
+	if to == "" {
+		return fmt.Errorf("repo name can't be empty")
+	}
+	if to == from {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var taken int
+	if err := tx.QueryRow(`SELECT count(*) FROM repos WHERE name = ?`, to).Scan(&taken); err != nil {
+		return err
+	}
+	if taken > 0 {
+		return fmt.Errorf("there's already a repo called %q", to)
+	}
+	res, err := tx.Exec(`UPDATE repos SET name = ?, updated_at = ? WHERE name = ?`, to, now(), from)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("repo %q: %w", from, ErrNotFound)
+	}
+	if _, err := tx.Exec(`UPDATE tasks SET repo = ? WHERE repo = ?`, to, from); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Store) DeleteRepo(name string) error {
 	res, err := s.db.Exec(`DELETE FROM repos WHERE name = ?`, name)
 	if err != nil {

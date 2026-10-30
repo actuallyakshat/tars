@@ -51,8 +51,17 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
-var migrations = []string{
-	`CREATE TABLE tasks (
+// migration is one schema step. Every step must be safe to run again: tars
+// 0.1.3 and older wrote their own (lower) version over newer databases, and
+// a newer tars then reruns steps that were already applied. Plain DDL uses
+// IF NOT EXISTS; steps SQLite can't guard that way say when they're done.
+type migration struct {
+	sql     string
+	applied func(tx *sql.Tx) (bool, error) // optional
+}
+
+var migrations = []migration{
+	{sql: `CREATE TABLE IF NOT EXISTS tasks (
 		id          INTEGER PRIMARY KEY AUTOINCREMENT,
 		title       TEXT NOT NULL,
 		body        TEXT NOT NULL DEFAULT '',
@@ -71,7 +80,7 @@ var migrations = []string{
 		updated_at  TEXT NOT NULL,
 		done_at     TEXT NOT NULL DEFAULT ''
 	);
-	CREATE TABLE task_log (
+	CREATE TABLE IF NOT EXISTS task_log (
 		id       INTEGER PRIMARY KEY AUTOINCREMENT,
 		task_id  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
 		at       TEXT NOT NULL,
@@ -79,29 +88,33 @@ var migrations = []string{
 		kind     TEXT NOT NULL,
 		text     TEXT NOT NULL
 	);
-	CREATE INDEX task_log_task ON task_log(task_id);
-	CREATE TABLE repos (
+	CREATE INDEX IF NOT EXISTS task_log_task ON task_log(task_id);
+	CREATE TABLE IF NOT EXISTS repos (
 		name        TEXT PRIMARY KEY,
 		path        TEXT NOT NULL DEFAULT '',
 		updated_at  TEXT NOT NULL
 	);
-	CREATE TABLE repo_sections (
+	CREATE TABLE IF NOT EXISTS repo_sections (
 		repo     TEXT NOT NULL REFERENCES repos(name) ON DELETE CASCADE ON UPDATE CASCADE,
 		section  TEXT NOT NULL,
 		content  TEXT NOT NULL,
 		PRIMARY KEY (repo, section)
 	);
-	CREATE TABLE profile (
+	CREATE TABLE IF NOT EXISTS profile (
 		section  TEXT PRIMARY KEY,
 		content  TEXT NOT NULL
-	);`,
+	);`},
 	// seen_at drives the "updated by the agent since you last looked" marker.
 	// Existing tasks count as seen so the marker starts clean.
-	`ALTER TABLE tasks ADD COLUMN seen_at TEXT NOT NULL DEFAULT '';
+	{
+		sql: `ALTER TABLE tasks ADD COLUMN seen_at TEXT NOT NULL DEFAULT '';
 	UPDATE tasks SET seen_at = updated_at;`,
+		applied: func(tx *sql.Tx) (bool, error) { return hasColumn(tx, "tasks", "seen_at") },
+	},
 	// Reports are the short, structured outcomes agents write instead of long
 	// narratives; sessions link tasks to the Claude sessions that worked on them.
-	`CREATE TABLE reports (
+
+	{sql: `CREATE TABLE IF NOT EXISTS reports (
 		id           INTEGER PRIMARY KEY AUTOINCREMENT,
 		task_id      INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
 		at           TEXT NOT NULL,
@@ -113,25 +126,36 @@ var migrations = []string{
 		answer       TEXT NOT NULL DEFAULT '',
 		answered_at  TEXT NOT NULL DEFAULT ''
 	);
-	CREATE INDEX reports_task ON reports(task_id);
-	CREATE TABLE sessions (
+	CREATE INDEX IF NOT EXISTS reports_task ON reports(task_id);
+	CREATE TABLE IF NOT EXISTS sessions (
 		id          TEXT PRIMARY KEY,
 		name        TEXT NOT NULL DEFAULT '',
 		launch_dir  TEXT NOT NULL DEFAULT '',
 		first_seen  TEXT NOT NULL,
 		last_seen   TEXT NOT NULL
 	);
-	CREATE TABLE task_sessions (
+	CREATE TABLE IF NOT EXISTS task_sessions (
 		task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
 		session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
 		first_at    TEXT NOT NULL,
 		last_at     TEXT NOT NULL,
 		PRIMARY KEY (task_id, session_id)
-	);`,
+	);`},
+	// The pull request holding the work, as a URL, set when an agent opens one.
+	{
+		sql:     `ALTER TABLE tasks ADD COLUMN pr TEXT NOT NULL DEFAULT '';`,
+		applied: func(tx *sql.Tx) (bool, error) { return hasColumn(tx, "tasks", "pr") },
+	},
 }
 
 // migrate runs pending migrations. Transactions are IMMEDIATE (see the DSN), so
 // two processes opening a fresh database at once serialize instead of racing.
+func hasColumn(tx *sql.Tx, table, column string) (bool, error) {
+	var n int
+	err := tx.QueryRow(`SELECT count(*) FROM pragma_table_info(?) WHERE name = ?`, table, column).Scan(&n)
+	return n > 0, err
+}
+
 func (s *Store) migrate() error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -150,8 +174,26 @@ func (s *Store) migrate() error {
 	} else if err != nil {
 		return err
 	}
+	// A newer tars wrote this database. Writing our older version over it would
+	// make the newer tars rerun migrations it already applied.
+	if v > len(migrations) {
+		return fmt.Errorf("this database was written by a newer tars (schema %d, this tars knows %d); upgrade tars", v, len(migrations))
+	}
+	if v == len(migrations) {
+		return tx.Commit()
+	}
 	for i := v; i < len(migrations); i++ {
-		if _, err := tx.Exec(migrations[i]); err != nil {
+		m := migrations[i]
+		if m.applied != nil {
+			done, err := m.applied(tx)
+			if err != nil {
+				return fmt.Errorf("migration %d: %w", i+1, err)
+			}
+			if done {
+				continue
+			}
+		}
+		if _, err := tx.Exec(m.sql); err != nil {
 			return fmt.Errorf("migration %d: %w", i+1, err)
 		}
 	}

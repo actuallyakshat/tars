@@ -1,6 +1,6 @@
 [package]
 name = "tars-desktop"
-version = "0.3.0"
+version = "0.3.1"
 description = "Tars for macOS"
 edition = "2021"
 license = "MIT"

@@ -438,7 +438,7 @@ func TestMigrationFromV1(t *testing.T) {
 	for _, q := range []string{
 		`CREATE TABLE schema_version (v INTEGER NOT NULL)`,
 		`INSERT INTO schema_version (v) VALUES (1)`,
-		migrations[0],
+		migrations[0].sql,
 		`INSERT INTO tasks (title, created_at, updated_at) VALUES ('legacy', '` + old + `', '` + old + `')`,
 		`INSERT INTO task_log (task_id, at, author, kind, text) VALUES (1, '` + old + `', 'agent', 'sweep', 'old work')`,
 	} {
@@ -567,5 +567,42 @@ func TestSessionsLinkAndCascade(t *testing.T) {
 	s.DeleteTask(a.ID)
 	if ss, _ := s.TaskSessions(a.ID); len(ss) != 0 {
 		t.Fatal("task-session links survived task delete")
+	}
+}
+
+func TestRenameRepoMovesSectionsAndTasks(t *testing.T) {
+	s := openTemp(t)
+	if err := s.UpsertRepo("billing", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRepoSection("billing", "tests", "make test"); err != nil {
+		t.Fatal(err)
+	}
+	task := mustCreate(t, s, &Task{Title: "x", Repo: "billing"})
+	other := mustCreate(t, s, &Task{Title: "y", Repo: "web"})
+	if err := s.UpsertRepo("web", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RenameRepo("billing", "web"); err == nil {
+		t.Fatal("renaming onto an existing repo should fail")
+	}
+	if err := s.RenameRepo("billing", "  "); err == nil {
+		t.Fatal("empty name should fail")
+	}
+	if err := s.RenameRepo("nope", "x"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing repo: %v", err)
+	}
+	if err := s.RenameRepo("billing", " billing-svc "); err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.GetRepo("billing-svc")
+	if err != nil || len(r.Sections) != 1 || r.Sections[0].Content != "make test" {
+		t.Fatalf("renamed repo = %+v, %v", r, err)
+	}
+	if got, _ := s.GetTask(task.ID); got.Repo != "billing-svc" {
+		t.Fatalf("task repo = %q", got.Repo)
+	}
+	if got, _ := s.GetTask(other.ID); got.Repo != "web" {
+		t.Fatalf("other task repo = %q", got.Repo)
 	}
 }

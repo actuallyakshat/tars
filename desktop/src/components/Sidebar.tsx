@@ -1,7 +1,7 @@
 import { Mark } from "../Mark";
 import { VIEWS, DONE } from "../model";
 
-export type PageName = "list" | "new" | "edit" | "settings" | "legend";
+export type PageName = "list" | "new" | "edit" | "repos" | "settings" | "legend";
 
 interface Props {
   counts: { total: number; unread: number }[];
@@ -54,6 +54,23 @@ export function Sidebar({ counts, view, page, onView, onPage }: Props) {
         })}
       </ul>
       <div className="sidebar-foot">
+        <button
+          className={"foot-link" + (page === "repos" ? " on" : "")}
+          aria-current={page === "repos" ? "page" : undefined}
+          onClick={() => onPage("repos")}
+          title="Repos and preferences"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path
+              d="M1.8 3.6c0-.6.4-1 1-1h2.6l1.2 1.3h4.6c.6 0 1 .4 1 1v5.5c0 .6-.4 1-1 1H2.8c-.6 0-1-.4-1-1V3.6Z"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.3"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Repos
+        </button>
         <button
           className={"foot-link" + (page === "legend" ? " on" : "")}
           aria-current={page === "legend" ? "page" : undefined}

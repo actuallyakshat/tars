@@ -91,11 +91,13 @@ These hold the things an agent can't infer from code: your definition of done, h
 tars repo set billing-svc --path ~/code/billing-svc
 tars repo set billing-svc -S tests -x "make test; integration: docker compose up db && make itest"
 tars repo set billing-svc -S dod -f ./docs/DOD.md
+tars repo mv billing-svc billing   # rename; its tasks move with it
 tars profile set style -x "Small PRs. No mocks for the DB layer."
+tars edit 12 --pr https://github.com/acme/billing/pull/412
 tars context 12                # everything an agent should read before working on #12
 ```
 
-Precedence: the repo's **CLAUDE.md / AGENTS.md** > tars repo profile > personal profile. Don't store secrets. Store *how* to get them (e.g. "creds in .env.local").
+Precedence: the repo's **CLAUDE.md / AGENTS.md** > tars repo profile > personal profile. The desktop app's Repos page shows all of it, and lets you rename repos and add, edit or remove preferences. Don't store secrets. Store *how* to get them (e.g. "creds in .env.local").
 
 ## The plugin
 

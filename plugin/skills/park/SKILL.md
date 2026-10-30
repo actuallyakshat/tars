@@ -35,7 +35,7 @@ Capture the state of the current session on a task so that work can resume later
    EOF
    ```
 
-4. If the branch or worktree isn't recorded on the task yet, run `tars edit <id> --branch <b> --worktree <toplevel>`.
+4. If the branch or worktree isn't recorded on the task yet, run `tars edit <id> --branch <b> --worktree <toplevel>`. If the branch has an open pull request (`gh pr view --json url -q .url`, when `gh` is available) and the task has no `pr`, add `--pr <url>`.
 5. Don't change the status unless the user says so. Parking isn't blocking.
 6. Confirm in one line: "Parked #<id>. Resume with `/tars:tars resume <id>`."
 

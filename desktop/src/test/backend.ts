@@ -2,7 +2,7 @@
 // something that behaves like the CLI.
 import { invoke } from "@tauri-apps/api/core";
 import { vi } from "vitest";
-import type { CliError, Repo, Task } from "../api";
+import type { CliError, Repo, Section, Task } from "../api";
 
 const NOW = new Date();
 const iso = (minutesAgo: number) => new Date(NOW.getTime() - minutesAgo * 60_000).toISOString();
@@ -77,6 +77,7 @@ export function sampleTasks(): Task[] {
     {
       id: 4,
       title: "Ship CSV export",
+      pr: "https://github.com/acme/billing/pull/412",
       status: "in-review",
       priority: 2,
       due: day(-2),
@@ -98,6 +99,8 @@ export function sampleTasks(): Task[] {
 export interface Backend {
   tasks: Task[];
   repos: Repo[];
+  sections: Record<string, Section[]>;
+  profile: Section[];
   folder: string | null;
   calls: [string, Record<string, unknown> | undefined][];
   fail: Partial<Record<string, CliError>>;
@@ -109,6 +112,13 @@ export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
     tasks: structuredClone(initial),
     repos: [{ name: "billing-svc", path: "/Users/me/code/billing-svc", updated_at: NOW.toISOString() }],
     folder: "/Users/me/code/promos-ui",
+    sections: {
+      "billing-svc": [
+        { name: "dod", content: "Tests pass and the PR links the Jira key." },
+        { name: "tests", content: "Run `make test`.\n- Integration tests need docker compose up db\n- Skip flaky_* locally" },
+      ],
+    },
+    profile: [{ name: "commits", content: "One logical change per commit." }],
     calls: [],
     fail: {},
     callsTo: (cmd) => b.calls.filter(([c]) => c === cmd).map(([, a]) => a),
@@ -170,7 +180,7 @@ export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
       case "edit_task": {
         const t = find(args!.id);
         const e = args!.edit as Record<string, unknown> & { tag?: string[]; untag?: string[] };
-        for (const k of ["title", "body", "jira", "repo"] as const) {
+        for (const k of ["title", "body", "jira", "repo", "pr"] as const) {
           if (typeof e[k] === "string") (t as unknown as Record<string, unknown>)[k] = e[k] || undefined;
         }
         if (typeof e.due === "string") t.due = e.due === "none" ? undefined : e.due;
@@ -193,6 +203,37 @@ export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
         const r = { name, path, updated_at: new Date().toISOString() };
         b.repos = [...b.repos.filter((x) => x.name !== name), r].sort((x, y) => x.name.localeCompare(y.name));
         return r;
+      }
+      case "show_repo": {
+        const r = b.repos.find((x) => x.name === args!.name);
+        if (!r) throw { kind: "failed", message: `repo profile "${args!.name}" not found` };
+        return { ...structuredClone(r), sections: structuredClone(b.sections[r.name] ?? []) };
+      }
+      case "get_profile":
+        return structuredClone(b.profile);
+      case "rename_repo": {
+        const from = args!.from as string;
+        const to = (args!.to as string).trim();
+        if (b.repos.some((r) => r.name === to)) throw { kind: "failed", message: `there's already a repo called "${to}"` };
+        const r = b.repos.find((x) => x.name === from)!;
+        r.name = to;
+        b.sections[to] = b.sections[from] ?? [];
+        delete b.sections[from];
+        for (const t of b.tasks) if (t.repo === from) t.repo = to;
+        return structuredClone(r);
+      }
+      case "set_repo_section":
+      case "set_profile_section": {
+        const list =
+          cmd === "set_profile_section" ? b.profile : (b.sections[args!.name as string] ??= []);
+        const name = (args!.section as string).trim().toLowerCase();
+        const text = args!.text as string;
+        const i = list.findIndex((x) => x.name === name);
+        if (!text.trim()) {
+          if (i >= 0) list.splice(i, 1);
+        } else if (i >= 0) list[i].content = text;
+        else list.push({ name, content: text });
+        return { saved: true };
       }
       case "remove_repo":
         b.repos = b.repos.filter((x) => x.name !== args!.name);

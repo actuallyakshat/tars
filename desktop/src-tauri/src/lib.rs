@@ -152,6 +152,31 @@ async fn set_repo(state: State<'_, AppState>, name: String, path: String) -> Res
 }
 
 #[tauri::command]
+async fn show_repo(state: State<'_, AppState>, name: String) -> Result<Value> {
+    with_tars(state, move |t| t.show_repo(&name)).await
+}
+
+#[tauri::command]
+async fn get_profile(state: State<'_, AppState>) -> Result<Value> {
+    with_tars(state, |t| t.profile()).await
+}
+
+#[tauri::command]
+async fn rename_repo(state: State<'_, AppState>, from: String, to: String) -> Result<Value> {
+    with_tars(state, move |t| t.rename_repo(&from, &to)).await
+}
+
+#[tauri::command]
+async fn set_repo_section(state: State<'_, AppState>, name: String, section: String, text: String) -> Result<Value> {
+    with_tars(state, move |t| t.set_repo_section(&name, &section, &text)).await
+}
+
+#[tauri::command]
+async fn set_profile_section(state: State<'_, AppState>, section: String, text: String) -> Result<Value> {
+    with_tars(state, move |t| t.set_profile_section(&section, &text)).await
+}
+
+#[tauri::command]
 async fn remove_repo(state: State<'_, AppState>, name: String) -> Result<Value> {
     with_tars(state, move |t| t.remove_repo(&name)).await
 }
@@ -190,6 +215,11 @@ pub fn run() {
             list_repos,
             set_repo,
             remove_repo,
+            show_repo,
+            rename_repo,
+            set_repo_section,
+            set_profile_section,
+            get_profile,
             choose_folder,
             set_zoom,
         ])

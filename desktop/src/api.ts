@@ -49,6 +49,7 @@ export interface Task {
   acceptance?: string;
   branch?: string;
   worktree?: string;
+  pr?: string;
   waiting_on?: string;
   follow_up?: string;
   created_at: string;
@@ -79,6 +80,7 @@ export interface TaskEdit {
   jira?: string;
   repo?: string;
   due?: string;
+  pr?: string;
   tag?: string[];
   untag?: string[];
 }
@@ -87,6 +89,15 @@ export interface Repo {
   name: string;
   path?: string;
   updated_at: string;
+}
+
+export interface Section {
+  name: string;
+  content: string;
+}
+
+export interface RepoDetail extends Repo {
+  sections?: Section[];
 }
 
 export interface CliStatus {
@@ -131,6 +142,11 @@ export const api = {
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   repos: () => invoke<Repo[]>("list_repos"),
   setRepo: (name: string, path: string) => invoke<Repo>("set_repo", { name, path }),
+  showRepo: (name: string) => invoke<RepoDetail>("show_repo", { name }),
+  profile: () => invoke<Section[]>("get_profile"),
+  renameRepo: (from: string, to: string) => invoke<Repo>("rename_repo", { from, to }),
+  setRepoSection: (name: string, section: string, text: string) => invoke("set_repo_section", { name, section, text }),
+  setProfileSection: (section: string, text: string) => invoke("set_profile_section", { section, text }),
   removeRepo: (name: string) => invoke("remove_repo", { name }),
   chooseFolder: () => invoke<string | null>("choose_folder"),
   zoom: (scale: number) => invoke<void>("set_zoom", { scale }),

@@ -1811,56 +1811,8 @@ button kbd,
 
 /* ---------- repos ---------- */
 
-.repo-list {
-  margin: 18px 0 0;
-  padding: 0;
-  list-style: none;
-  border-top: 1px solid var(--line);
-}
-
-.repo-list li {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.repo-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-
-.repo-name {
-  font-weight: 550;
-}
-
-.repo-path {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: 12px;
-  color: var(--ink-2);
-}
-
-.repo-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-}
-
 .repo-add {
-  margin-top: 28px;
-}
-
-.repo-add h3 {
-  margin: 0 0 12px;
-  font-size: 14px;
-  font-weight: 600;
+  max-width: 640px;
 }
 
 .repo-add-row {
@@ -2018,4 +1970,449 @@ button kbd,
 .detail.full .detail-scroll {
   padding-left: max(28px, calc((100% - 860px) / 2));
   padding-right: max(28px, calc((100% - 860px) / 2));
+}
+
+/* ---------- settings: opening tasks ---------- */
+
+.choice-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.choice-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 340px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 120ms var(--ease), box-shadow 120ms var(--ease);
+}
+
+.choice-card:hover {
+  border-color: #cfcfd5;
+}
+
+.choice-card.on {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+  color: var(--ink);
+}
+
+.choice-card:has(input:focus-visible) {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.choice-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mode-sketch {
+  flex: none;
+}
+
+.choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.choice-label {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.choice-help {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.settings-gap {
+  margin-top: 36px !important;
+}
+
+/* ---------- repos page ---------- */
+
+.repos {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+}
+
+.repos-nav {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.repos-nav-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 40px 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.repos-nav-item:hover {
+  background: rgb(24 24 27 / 0.04);
+}
+
+.repos-nav-item.on {
+  background: rgb(24 24 27 / 0.07);
+}
+
+.repos-nav-name {
+  font-weight: 550;
+  color: var(--ink);
+}
+
+.repos-nav-sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.repos-nav-count {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgb(24 24 27 / 0.06);
+  color: var(--ink-2);
+  font-size: 11px;
+  text-align: center;
+}
+
+.repos-nav-rule {
+  margin: 6px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.repos-add-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.repos-add-button:hover,
+.repos-add-button.on {
+  border-color: #b9b9c2;
+  color: var(--ink);
+}
+
+.repo-head {
+  margin-bottom: 24px;
+}
+
+.repo-head h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.repo-head > .muted {
+  margin: 8px 0 0;
+  max-width: 62ch;
+}
+
+.repo-head-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.repo-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgb(24 24 27 / 0.06);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.repo-folder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.repo-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.pref-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.pref-card {
+  padding: 16px 18px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.pref-card h3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pref-key {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.prose {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.prose p,
+.prose ul {
+  margin: 0;
+}
+
+.prose > * + * {
+  margin-top: 8px;
+}
+
+.prose ul {
+  padding-left: 18px;
+}
+
+.prose li + li {
+  margin-top: 3px;
+}
+
+.prose code,
+.repo-empty code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(24 24 27 / 0.06);
+  font-family: var(--mono);
+  font-size: 0.88em;
+}
+
+.repo-empty {
+  max-width: 62ch;
+  padding: 18px 20px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .repos {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .repos-nav {
+    position: static;
+  }
+}
+
+/* ---------- pull requests ---------- */
+
+.pr-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--s-review) 35%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--s-review) 8%, transparent);
+  color: var(--s-review);
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pr-chip:hover {
+  background: color-mix(in srgb, var(--s-review) 16%, transparent);
+}
+
+.c-title {
+  align-items: center;
+}
+
+.pr-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--s-review);
+}
+
+/* ---------- editing repos and preferences ---------- */
+
+.rename-link,
+.pref-actions .link {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.rename-link:hover,
+.pref-actions .link:hover {
+  color: var(--ink);
+}
+
+.rename-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.rename-input {
+  flex: 1;
+  max-width: 420px;
+  padding: 2px 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--ink-2);
+  background: none;
+  font-family: var(--serif);
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.pref-actions {
+  display: flex;
+  gap: 10px;
+  opacity: 0;
+  transition: opacity 120ms var(--ease);
+}
+
+.pref-card:hover .pref-actions,
+.pref-card:focus-within .pref-actions {
+  opacity: 1;
+}
+
+.pref-actions .danger-link {
+  color: var(--s-blocked);
+  font-weight: 550;
+}
+
+.pref-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 96px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pref-add:hover {
+  border-color: #b9b9c2;
+  color: var(--ink);
+}
+
+.pref-card.editing {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-color: var(--ink-2);
+}
+
+.pref-card.editing h3 {
+  margin: 0;
+}
+
+.pref-card.editing textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--page);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.pref-card.editing textarea:focus {
+  border-color: var(--ink-2);
+}
+
+.pref-name-input {
+  padding: 2px 0 6px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pref-name-input:focus {
+  border-bottom-color: var(--ink-2);
+}
+
+.pref-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pref-editor-actions .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }

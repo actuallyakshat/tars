@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Task } from "../api";
-import { type Group, type GroupBy, type SortBy, GROUPINGS, NEEDS_YOU, OPEN, SORTS, STATUS, VIEWS, ago, dueText, priorityMark } from "../model";
+import { type Group, type GroupBy, type SortBy, GROUPINGS, NEEDS_YOU, OPEN, SORTS, STATUS, VIEWS, ago, dueText, prLabel, priorityMark } from "../model";
 import { PreviewToggle, SidebarToggle } from "./Panes";
 
 interface Props {
@@ -18,6 +18,7 @@ interface Props {
   onSelect: (id: number) => void;
   onOpen: (id: number) => void;
   onMenu: (id: number, x: number, y: number) => void;
+  onOpenUrl: (url: string) => void;
 }
 
 function emptyMessage(view: number, totalOpen: number, query: string) {
@@ -27,7 +28,7 @@ function emptyMessage(view: number, totalOpen: number, query: string) {
   return "Nothing here.";
 }
 
-export function TaskList({ groups, view, totalOpen, selectedId, now, query, group, sort, onQuery, onGroup, onSort, onSelect, onOpen, onMenu }: Props) {
+export function TaskList({ groups, view, totalOpen, selectedId, now, query, group, sort, onQuery, onGroup, onSort, onSelect, onOpen, onMenu, onOpenUrl }: Props) {
   const selRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
     selRef.current?.scrollIntoView?.({ block: "nearest" });
@@ -65,6 +66,7 @@ export function TaskList({ groups, view, totalOpen, selectedId, now, query, grou
                     onSelect={onSelect}
                     onOpen={onOpen}
                     onMenu={onMenu}
+                    onOpenUrl={onOpenUrl}
                   />
                 ))}
               </ul>
@@ -84,9 +86,10 @@ interface RowProps {
   onSelect: (id: number) => void;
   onOpen: (id: number) => void;
   onMenu: (id: number, x: number, y: number) => void;
+  onOpenUrl: (url: string) => void;
 }
 
-function Row({ t, now, selected, ref, onSelect, onOpen, onMenu }: RowProps) {
+function Row({ t, now, selected, ref, onSelect, onOpen, onMenu, onOpenUrl }: RowProps) {
   const due = t.status === "done" ? { text: ago(t.done_at, now), tone: "muted" } : dueText(t.due, now);
   const cls = ["row", `p${t.priority}`, `s-${t.status}`];
   if (selected) cls.push("sel");
@@ -126,6 +129,19 @@ function Row({ t, now, selected, ref, onSelect, onOpen, onMenu }: RowProps) {
       <span className="c-title">
         <span className="title-text">{t.title}</span>
         {t.status === "blocked" && t.waiting_on && <span className="waiting">waiting on {t.waiting_on}</span>}
+        {t.pr && (
+          <button
+            className="pr-chip"
+            title={`Open ${t.pr}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenUrl(t.pr!);
+            }}
+          >
+            <PrIcon />
+            {prLabel(t.pr)}
+          </button>
+        )}
       </span>
       <span className="c-jira">{t.jira}</span>
       <span className="c-repo">{t.repo}</span>
@@ -231,5 +247,17 @@ function DisplayMenu({
         </div>
       )}
     </div>
+  );
+}
+
+// A pull request: two branches joining.
+export function PrIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+      <circle cx="3" cy="2.5" r="1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="3" cy="9.5" r="1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="9" cy="9.5" r="1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M3 4v4M9 8V5.5A2 2 0 0 0 7 3.5H5.5" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
   );
 }

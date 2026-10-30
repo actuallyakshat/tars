@@ -207,6 +207,12 @@ export function ago(ts: string | undefined, now: Date): string {
 export const openQuestion = (t: Task) =>
   t.report?.needs_you && !t.report.answered_at ? t.report.needs_you : "";
 
+/** "PR #412" for GitHub and GitLab links, else just "PR". */
+export function prLabel(url: string) {
+  const m = url.match(/\/(?:pull|pulls|merge_requests)\/(\d+)/);
+  return m ? `PR #${m[1]}` : "PR";
+}
+
 export const resumeCommand = (sessionId: string) => `claude --resume ${sessionId}`;
 
 export function jiraUrl(base: string, key: string) {

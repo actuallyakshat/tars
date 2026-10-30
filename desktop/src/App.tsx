@@ -22,18 +22,21 @@ import { TaskList } from "./components/TaskList";
 import { Detail } from "./components/Detail";
 import { CliProblem, ConfirmDialog } from "./components/Dialogs";
 import { ContextMenu } from "./components/ContextMenu";
-import { EditTaskPage, LegendPage, NewTaskPage, SettingsPage } from "./components/Pages";
+import { EditTaskPage, LegendPage, NewTaskPage, SettingsPage, type OpenMode } from "./components/Pages";
+import { ReposPage } from "./components/ReposPage";
 import type { PageName } from "./components/Sidebar";
 import { CommandPalette, type Command } from "./components/CommandPalette";
 import { PanesContext } from "./components/Panes";
 
 export const REFRESH_MS = 4000;
+export const RETRY_MS = 5000;
 const JIRA_KEY = "tars.jiraBase";
 const SIDEBAR_KEY = "tars.sidebarOpen";
 const DETAIL_KEY = "tars.detailOpen";
 const WIDTH_KEY = "tars.detailWidth";
 const SIDEBAR_WIDTH_KEY = "tars.sidebarWidth";
 const ZOOM_KEY = "tars.zoom";
+const OPEN_MODE_KEY = "tars.openMode";
 const GROUP_KEY = "tars.groupBy";
 const SORT_KEY = "tars.sortBy";
 const ZOOM_STEPS = [0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.4, 1.5];
@@ -61,6 +64,7 @@ export function App() {
   const [fatal, setFatal] = useState<CliError | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [view, setView] = useState(OPEN);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -70,7 +74,7 @@ export function App() {
   const [noting, setNoting] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [page, setPage] = useState<PageName>("list");
-  const [settingsSection, setSettingsSection] = useState<"general" | "repos">("general");
+  const [openMode, setOpenMode] = useState<OpenMode>(() => (localStorage.getItem(OPEN_MODE_KEY) === "full" ? "full" : "pane"));
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY, true));
   const [detailOpen, setDetailOpen] = useState(() => stored(DETAIL_KEY, true));
   const [detailWidth, setDetailWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || DETAIL_DEFAULT);
@@ -142,19 +146,31 @@ export function App() {
     }
   }, [fail]);
 
-  const boot = useCallback(async () => {
-    setFatal(null);
-    setBootError(null);
+  // quiet: an automatic retry, which keeps the current error on screen
+  // instead of flashing "Loading…".
+  const boot = useCallback(async (quiet = false) => {
+    if (!quiet) {
+      setFatal(null);
+      setBootError(null);
+    }
     let list: Task[];
     try {
       setCli(await api.status());
       list = await api.list();
     } catch (e) {
       const err = asCliError(e);
-      if (isFatal(err)) setFatal(err);
-      else setBootError(err.message);
+      if (isFatal(err)) {
+        setFatal(err);
+        setBootError(null);
+      } else {
+        setFatal(null);
+        setBootError(err.message);
+      }
+      setAttempt((n) => n + 1);
       return;
     }
+    setFatal(null);
+    setBootError(null);
     setTasks(list);
     setNow(new Date());
     const v = defaultView(list);
@@ -175,6 +191,15 @@ export function App() {
     const h = setInterval(() => void refresh(), REFRESH_MS);
     return () => clearInterval(h);
   }, [loaded, fatal, refresh]);
+
+  // Heal without a click: a failed load, or a missing or outdated CLI, is
+  // tried again every few seconds, so fixing it (or the CLI repairing its
+  // database) brings the list back on its own.
+  useEffect(() => {
+    if (!bootError && !fatal) return;
+    const h = setTimeout(() => void boot(true), RETRY_MS);
+    return () => clearTimeout(h);
+  }, [bootError, fatal, attempt, boot]);
 
   // Keep the selection on the same task across refreshes; when it leaves the
   // view, take the task that moved into its place.
@@ -198,17 +223,28 @@ export function App() {
       (full) => {
         if (selRef.current !== id) return;
         setDetail(full);
-        // Looking at a task is what "seen" means: clear the ● right away.
-        if (full.unread) {
-          api.seen(id).then(() => {
-            setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, unread: false } : t)));
-            setDetail((d) => (d && d.id === id ? { ...d, unread: false } : d));
-          }, fail);
-        }
       },
       (e) => fail(e),
     );
   }, [selectedId, fail]);
+
+  // Looking at a task is what "seen" means: clear the ● once its details are
+  // on screen. Just moving the selection through the list doesn't count.
+  const taskShowing = page === "list" && detailOpen && (openMode === "pane" || fullDetail);
+  const seenId = detail && detail.id === selectedId && detail.unread && taskShowing ? detail.id : null;
+  useEffect(() => {
+    if (seenId === null) return;
+    const id = seenId;
+    api.seen(id).then(() => {
+      setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, unread: false } : t)));
+      setDetail((d) => (d && d.id === id ? { ...d, unread: false } : d));
+    }, fail);
+  }, [seenId, fail]);
+
+  // Agents add repos and preferences while the app is open; show the latest.
+  useEffect(() => {
+    if (page === "repos") api.repos().then(setProfiles, fail);
+  }, [page, fail]);
 
   useEffect(() => {
     if (!flash) return;
@@ -229,6 +265,7 @@ export function App() {
   useEffect(() => localStorage.setItem(WIDTH_KEY, String(Math.round(detailWidth))), [detailWidth]);
   useEffect(() => localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(sidebarWidth))), [sidebarWidth]);
   useEffect(() => localStorage.setItem(GROUP_KEY, groupBy), [groupBy]);
+  useEffect(() => localStorage.setItem(OPEN_MODE_KEY, openMode), [openMode]);
   useEffect(() => localStorage.setItem(SORT_KEY, sortBy), [sortBy]);
   useEffect(() => {
     localStorage.setItem(ZOOM_KEY, String(zoom));
@@ -244,8 +281,14 @@ export function App() {
     [sidebarOpen, sidebarWidth],
   );
 
-  const openDetail = () => {
+  // Shows the selected task the way Settings says: beside the list, or full screen.
+  const showTask = () => {
     setDetailOpen(true);
+    if (openMode === "full") setFullDetail(true);
+  };
+
+  const openDetail = () => {
+    showTask();
     setFocus("detail");
   };
 
@@ -373,9 +416,15 @@ export function App() {
 
   const toggleSidebar = () => setSidebarOpen((o) => !o);
   const toggleDetail = () => {
+    setFocus("list");
+    if (openMode === "full") {
+      // There's no side pane in this mode: toggling means opening or leaving full screen.
+      if (fullDetail) setFullDetail(false);
+      else if (selected) openDetail();
+      return;
+    }
     setDetailOpen((o) => !o);
     setFullDetail(false);
-    setFocus("list");
   };
   const toggleFull = () => {
     if (!selected && !fullDetail) return;
@@ -541,7 +590,7 @@ export function App() {
         break;
       case "p":
         if (!selected) return;
-        if (!detailOpen) setDetailOpen(true);
+        showTask();
         requestAnimationFrame(() => document.getElementById("priority-select")?.click());
         break;
       case "u":
@@ -566,7 +615,7 @@ export function App() {
         break;
       case "s":
         if (!selected) return;
-        if (!detailOpen) setDetailOpen(true);
+        showTask();
         requestAnimationFrame(() => document.getElementById("status-select")?.click());
         break;
       case "l":
@@ -643,21 +692,12 @@ export function App() {
     })),
     { id: "sidebar", label: sidebarOpen ? "Hide sidebar" : "Show sidebar", keys: "⌘B", run: toggleSidebar },
     { id: "preview", label: detailOpen ? "Hide preview" : "Show preview", keys: "⌘⇧B", run: toggleDetail },
+    { id: "repos", label: "Repos and preferences", run: () => setPage("repos") },
+    { id: "settings", label: "Settings", run: () => setPage("settings") },
     {
-      id: "repos",
-      label: "Add a repo",
-      run: () => {
-        setSettingsSection("repos");
-        setPage("settings");
-      },
-    },
-    {
-      id: "settings",
-      label: "Settings",
-      run: () => {
-        setSettingsSection("general");
-        setPage("settings");
-      },
+      id: "open-mode",
+      label: openMode === "full" ? "Open tasks in the side pane" : "Open tasks full screen",
+      run: () => setOpenMode(openMode === "full" ? "pane" : "full"),
     },
     { id: "legend", label: "Legend", keys: "?", run: () => setPage("legend") },
     { id: "refresh", label: "Refresh", keys: "⌘R", run: () => void refresh().then((l) => l && say("Refreshed")) },
@@ -665,7 +705,10 @@ export function App() {
     { id: "zoom-out", label: "Zoom out", keys: "⌘−", run: () => zoomBy(-1) },
     { id: "zoom-reset", label: "Actual size", keys: "⌘0", run: () => zoomBy(0) },
   ];
-  const showDetail = page === "list" && detailOpen;
+  // In full-screen mode the task only shows full screen, never as a side pane.
+  const showDetail = taskShowing;
+  const openByRepo: Record<string, number> = {};
+  for (const t of tasks) if (t.repo && t.status !== "done") openByRepo[t.repo] = (openByRepo[t.repo] ?? 0) + 1;
   const full = showDetail && fullDetail;
   const showSidebar = sidebarOpen && !full;
   const columns = full
@@ -675,7 +718,7 @@ export function App() {
         .join(" ");
 
   return (
-    <PanesContext.Provider value={{ sidebarOpen, detailOpen: showDetail, toggleSidebar, toggleDetail }}>
+    <PanesContext.Provider value={{ sidebarOpen, detailOpen: showDetail, previewPane: openMode === "pane", toggleSidebar, toggleDetail }}>
     <div
       className={"app" + (focus === "detail" ? " detail-focus" : "") + (showSidebar ? "" : " no-sidebar") + (full ? " full-detail" : "")}
       style={{ gridTemplateColumns: columns }}
@@ -687,10 +730,7 @@ export function App() {
           view={view}
           page={page}
           onView={changeView}
-          onPage={(p) => {
-            setSettingsSection("general");
-            setPage(p);
-          }}
+          onPage={(p) => setPage(p)}
         />
         <Resizer
           label="Resize sidebar"
@@ -707,18 +747,39 @@ export function App() {
       )}
       {page === "settings" && (
         <SettingsPage
-          initialSection={settingsSection}
           jiraBase={jiraBase}
           cli={cli}
+          openMode={openMode}
+          onOpenMode={setOpenMode}
           onSaveJira={(b) => {
             setJiraBase(b);
             localStorage.setItem(JIRA_KEY, b);
           }}
           onBack={() => setPage("list")}
+        />
+      )}
+      {page === "repos" && (
+        <ReposPage
           repos={profiles}
+          openTasks={openByRepo}
+          onLoadRepo={(name) => api.showRepo(name).catch((e) => (fail(e), null))}
+          onLoadProfile={() => api.profile().catch((e) => (fail(e), null))}
           onSetRepo={setRepo}
           onRemoveRepo={removeRepo}
+          onRenameRepo={async (from, to) => {
+            const ok = await act(() => api.renameRepo(from, to), `Renamed ${from} to ${to.trim()}. Its tasks moved with it.`);
+            if (ok) api.repos().then(setProfiles, fail);
+            return ok;
+          }}
+          onSetSection={(repo, section, text) =>
+            act(
+              () => (repo === null ? api.setProfileSection(section, text) : api.setRepoSection(repo, section, text)),
+              text.trim() ? "Saved preference" : "Removed preference",
+            )
+          }
           onChooseFolder={chooseFolder}
+          onReveal={(p) => void api.reveal(p).catch(fail)}
+          onBack={() => setPage("list")}
         />
       )}
       {page === "legend" && <LegendPage onBack={() => setPage("list")} />}
@@ -737,14 +798,18 @@ export function App() {
           onSort={setSortBy}
           onSelect={(id) => {
             setSelectedId(id);
-            setDetailOpen(true);
-            setFocus("list");
+            if (openMode === "full") openDetail();
+            else {
+              setDetailOpen(true);
+              setFocus("list");
+            }
           }}
           onOpen={(id) => {
             setSelectedId(id);
             openDetail();
           }}
           onMenu={openMenu}
+          onOpenUrl={(url) => void api.openUrl(url).catch(fail)}
         />
       )}
       {showDetail && (
@@ -779,6 +844,7 @@ export function App() {
             onAnswer={answer}
             onNote={note}
             onJira={openJira}
+            onOpenUrl={(url) => void api.openUrl(url).catch(fail)}
             onCopy={(text, what) => void copy(text, what)}
             onReveal={(p) => void api.reveal(p).catch(fail)}
             onTerminal={(s) => void openTerminal(s)}

@@ -5,6 +5,8 @@ import { createContext, useContext } from "react";
 export interface Panes {
   sidebarOpen: boolean;
   detailOpen: boolean;
+  /** False when tasks open full screen: there's no side pane to toggle. */
+  previewPane: boolean;
   toggleSidebar: () => void;
   toggleDetail: () => void;
 }
@@ -12,6 +14,7 @@ export interface Panes {
 export const PanesContext = createContext<Panes>({
   sidebarOpen: true,
   detailOpen: true,
+  previewPane: true,
   toggleSidebar: () => {},
   toggleDetail: () => {},
 });
@@ -31,7 +34,8 @@ export function SidebarToggle() {
 }
 
 export function PreviewToggle() {
-  const { detailOpen, toggleDetail } = useContext(PanesContext);
+  const { detailOpen, previewPane, toggleDetail } = useContext(PanesContext);
+  if (!previewPane) return null;
   const label = detailOpen ? "Hide preview" : "Show preview";
   return (
     <button className={"icon-button pane-toggle" + (detailOpen ? "" : " off")} onClick={toggleDetail} aria-label={label} title={`${label} (⌘⇧B)`}>

@@ -28,7 +28,7 @@ The app has no database code of its own. Every read and write runs the `tars` CL
 | `⌘R` | Refresh |
 | `?` | Legend |
 
-Grouping and sort order are in the list header's display menu. Repo folders are set in Settings → Repos. Jira keys open in the browser once you set your Jira URL in Settings; until then clicking one copies it. Opening a task clears its ●.
+Grouping and sort order are in the list header's display menu. The Repos page (sidebar) shows each repo's preferences and your personal profile, and is where you add repos and set their folders. Settings → General chooses whether tasks open in the side pane or full screen. If the app can't load, it retries on its own every few seconds. Jira keys open in the browser once you set your Jira URL in Settings; until then clicking one copies it. Opening a task clears its ●.
 
 ## Development
 

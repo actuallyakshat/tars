@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { App, REFRESH_MS } from "./App";
+import { App, REFRESH_MS, RETRY_MS } from "./App";
 import { fakeBackend, sampleTasks } from "./test/backend";
 
 const views = ["Needs you", "Open", "Inbox", "Ready", "Review", "Blocked", "Done"];
@@ -643,37 +643,110 @@ describe("panes and zoom", () => {
 });
 
 describe("repos", () => {
-  it("lists repos, adds one from the folder picker, and removes one after confirming", async () => {
+  const openRepos = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(sidebar().getByRole("button", { name: "Repos" }));
+    return within(screen.getByRole("main", { name: "Repos" }));
+  };
+
+  it("shows each repo's preferences as cards, and your personal profile under Everywhere", async () => {
+    fakeBackend();
+    const user = await boot();
+    const page = await openRepos(user);
+    const repo = within(await page.findByRole("region", { name: "billing-svc" }));
+    expect(await repo.findByRole("article", { name: "Definition of done" })).toHaveTextContent("Tests pass and the PR links the Jira key.");
+    const tests = repo.getByRole("article", { name: "Tests" });
+    expect(within(tests).getByText("make test")).toBeInTheDocument();
+    expect(within(tests).getAllByRole("listitem")).toHaveLength(2);
+    expect(repo.getByText("1 open")).toBeInTheDocument();
+
+    await user.click(page.getByRole("button", { name: /Everywhere/ }));
+    expect(await page.findByRole("article", { name: "Commits" })).toHaveTextContent("One logical change per commit.");
+  });
+
+  it("adds a repo from the folder picker and removes one after confirming", async () => {
     const b = fakeBackend();
     const user = await boot();
-    await user.click(sidebar().getByRole("button", { name: "Settings" }));
-    await user.click(screen.getByRole("button", { name: "Repos" }));
-    const list = within(screen.getByRole("list", { name: "Your repos" }));
-    expect(list.getByText("/Users/me/code/billing-svc")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Choose…" }));
-    expect(screen.getByPlaceholderText("~/code/billing-svc")).toHaveValue("/Users/me/code/promos-ui");
-    expect(screen.getByPlaceholderText("billing-svc")).toHaveValue("promos-ui");
-    await user.click(screen.getByRole("button", { name: "Add repo" }));
+    const page = await openRepos(user);
+    await user.click(page.getByRole("button", { name: /Add a repo/ }));
+    await user.click(page.getByRole("button", { name: "Choose…" }));
+    expect(page.getByPlaceholderText("~/code/billing-svc")).toHaveValue("/Users/me/code/promos-ui");
+    expect(page.getByPlaceholderText("billing-svc")).toHaveValue("promos-ui");
+    await user.click(page.getByRole("button", { name: "Add repo" }));
     expect(b.callsTo("set_repo")).toEqual([{ name: "promos-ui", path: "/Users/me/code/promos-ui" }]);
-    expect(await screen.findByText("/Users/me/code/promos-ui")).toBeInTheDocument();
+    const added = within(await page.findByRole("region", { name: "promos-ui" }));
+    expect(await added.findByText(/No preferences for promos-ui yet/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Remove billing-svc" }));
+    await user.click(page.getByRole("button", { name: /^billing-svc/ }));
+    await user.click(page.getByRole("button", { name: "Remove billing-svc" }));
     expect(b.callsTo("remove_repo")).toEqual([]);
-    await user.click(screen.getByRole("button", { name: "Delete billing-svc" }));
+    await user.click(page.getByRole("button", { name: "Delete billing-svc" }));
     expect(b.callsTo("remove_repo")).toEqual([{ name: "billing-svc" }]);
-    await waitFor(() => expect(screen.queryByText("/Users/me/code/billing-svc")).toBeNull());
+    await waitFor(() => expect(page.queryByRole("button", { name: /^billing-svc/ })).toBeNull());
   });
 
   it("explains a relative path", async () => {
     fakeBackend();
     const user = await boot();
-    await user.click(sidebar().getByRole("button", { name: "Settings" }));
-    await user.click(screen.getByRole("button", { name: "Repos" }));
-    await user.type(screen.getByPlaceholderText("~/code/billing-svc"), "code/x");
-    await user.type(screen.getByPlaceholderText("billing-svc"), "x");
-    await user.click(screen.getByRole("button", { name: "Add repo" }));
+    const page = await openRepos(user);
+    await user.click(page.getByRole("button", { name: /Add a repo/ }));
+    await user.type(page.getByPlaceholderText("~/code/billing-svc"), "code/x");
+    await user.type(page.getByPlaceholderText("billing-svc"), "x");
+    await user.click(page.getByRole("button", { name: "Add repo" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("full path");
+  });
+});
+
+describe("opening tasks", () => {
+  it("opens tasks full screen once Settings says so, and Esc returns to the list", async () => {
+    const b = fakeBackend();
+    const user = await boot();
+    await user.click(sidebar().getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("radio", { name: /Full screen/ }));
+    expect(localStorage.getItem("tars.openMode")).toBe("full");
+    await user.keyboard("{Escape}");
+
+    // No side pane in this mode, and moving through the list doesn't mark
+    // tasks read: only opening one does.
+    expect(screen.queryByRole("region", { name: "Task details" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /preview/ })).toBeNull();
+    await user.keyboard("2");
+    await user.click(document.body);
+    const before = b.callsTo("mark_seen").length;
+    await user.keyboard("jjj"); // #2, #1, #4, then #3, which has an agent update
+    expect(screen.getByTestId("row-3")).toHaveAttribute("aria-selected", "true");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(b.callsTo("mark_seen")).toHaveLength(before);
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(b.callsTo("mark_seen")).toContainEqual({ id: 3 }));
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByTestId("row-1"));
+    expect(screen.getByRole("region", { name: "Task details" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Views" })).toBeNull();
+    expect(screen.queryByTestId("row-1")).toBeNull();
+
+    await user.keyboard("{Escape}");
+    expect(screen.getByTestId("row-1")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Task details" })).toBeNull();
+  });
+});
+
+describe("self-healing", () => {
+  it("retries a failed load on its own and recovers once the CLI works", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const b = fakeBackend();
+      b.fail.list_tasks = { kind: "failed", message: "migrate: migration 3: table reports already exists" };
+      render(<App />);
+      expect(await screen.findByText(/Couldn't load tasks/)).toBeInTheDocument();
+      delete b.fail.list_tasks;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(RETRY_MS + 10);
+      });
+      expect(await screen.findByRole("navigation", { name: "Views" })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -720,5 +793,105 @@ describe("right-click menu", () => {
     await user.keyboard("/ab{Meta>}{Backspace}{/Meta}");
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(b.callsTo("delete_task")).toEqual([]);
+  });
+});
+
+describe("pull requests", () => {
+  it("shows a task's PR in the list and details, opens it, and sets it from Edit", async () => {
+    const b = fakeBackend();
+    const user = await boot();
+    await user.keyboard("2");
+    const chip = within(screen.getByTestId("row-4")).getByRole("button", { name: "PR #412" });
+    await user.click(chip);
+    expect(b.callsTo("open_url")).toEqual([{ url: "https://github.com/acme/billing/pull/412" }]);
+    // Clicking the chip opens the PR without selecting the row.
+    expect(screen.getByTestId("row-4")).toHaveAttribute("aria-selected", "false");
+
+    await user.click(screen.getByTestId("row-3"));
+    expect(within(screen.getByTestId("row-3")).queryByRole("button", { name: /PR/ })).toBeNull();
+    await detail().findByText("Tidy README");
+    await user.keyboard("e");
+    await user.type(screen.getByRole("textbox", { name: "Pull request" }), "https://github.com/acme/web/pull/9");
+    await user.keyboard("{Meta>}{Enter}{/Meta}");
+    expect(b.callsTo("edit_task")).toEqual([{ id: 3, edit: { pr: "https://github.com/acme/web/pull/9" } }]);
+    expect(await within(screen.getByTestId("row-3")).findByRole("button", { name: "PR #9" })).toBeInTheDocument();
+    expect(await detail().findByRole("button", { name: /PR #9/ })).toBeInTheDocument();
+  });
+
+  it("has no PR field when creating a task", async () => {
+    fakeBackend();
+    const user = await boot();
+    await user.keyboard("c");
+    expect(screen.queryByRole("textbox", { name: "Pull request" })).toBeNull();
+  });
+});
+
+describe("editing repos and preferences", () => {
+  const openRepo = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(sidebar().getByRole("button", { name: "Repos" }));
+    const page = within(screen.getByRole("main", { name: "Repos" }));
+    await page.findByRole("article", { name: "Tests" });
+    return page;
+  };
+
+  it("renames a repo and its tasks follow", async () => {
+    const b = fakeBackend();
+    const user = await boot();
+    const page = await openRepo(user);
+    await user.click(page.getByRole("button", { name: "Rename billing-svc" }));
+    const field = page.getByRole("textbox", { name: "Repo name" });
+    await user.clear(field);
+    await user.type(field, "billing{Enter}");
+    expect(b.callsTo("rename_repo")).toEqual([{ from: "billing-svc", to: "billing" }]);
+    expect(await page.findByRole("heading", { level: 2, name: "billing" })).toBeInTheDocument();
+    expect(page.getByRole("button", { name: /^billing\b/ })).toBeInTheDocument();
+    await waitFor(() => expect(b.tasks.find((t) => t.id === 1)?.repo).toBe("billing"));
+  });
+
+  it("edits, removes and adds a repo preference", async () => {
+    const b = fakeBackend();
+    const user = await boot();
+    const page = await openRepo(user);
+
+    await user.click(page.getByRole("button", { name: "Edit Definition of done" }));
+    const text = page.getByRole("textbox", { name: "Definition of done text" });
+    await user.clear(text);
+    await user.type(text, "Green CI.");
+    await user.keyboard("{Meta>}{Enter}{/Meta}");
+    expect(b.callsTo("set_repo_section")).toEqual([{ name: "billing-svc", section: "dod", text: "Green CI." }]);
+    expect(await page.findByRole("article", { name: "Definition of done" })).toHaveTextContent("Green CI.");
+
+    await user.click(page.getByRole("button", { name: "Remove Tests" }));
+    expect(b.callsTo("set_repo_section")).toHaveLength(1);
+    await user.click(page.getByRole("button", { name: "Delete Tests" }));
+    expect(b.callsTo("set_repo_section")[1]).toEqual({ name: "billing-svc", section: "tests", text: "" });
+    await waitFor(() => expect(page.queryByRole("article", { name: "Tests" })).toBeNull());
+
+    await user.click(page.getByRole("button", { name: /Add a preference/ }));
+    await user.click(page.getByRole("button", { name: "Gotchas" }));
+    await user.type(page.getByRole("textbox", { name: "New preference text" }), "- Never run migrations on UAT");
+    await user.click(page.getByRole("button", { name: /^Save/ }));
+    expect(b.callsTo("set_repo_section")[2]).toEqual({ name: "billing-svc", section: "gotchas", text: "- Never run migrations on UAT" });
+    const gotchas = await page.findByRole("article", { name: "Gotchas" });
+    expect(within(gotchas).getByRole("listitem")).toHaveTextContent("Never run migrations on UAT");
+  });
+
+  it("edits the personal profile, and Esc cancels an edit without leaving the page", async () => {
+    const b = fakeBackend();
+    const user = await boot();
+    const page = await openRepo(user);
+    await user.click(page.getByRole("button", { name: /Everywhere/ }));
+    await page.findByRole("article", { name: "Commits" });
+    await user.click(page.getByRole("button", { name: "Edit Commits" }));
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("main", { name: "Repos" })).toBeInTheDocument();
+    expect(page.getByRole("article", { name: "Commits" })).toBeInTheDocument();
+
+    await user.click(page.getByRole("button", { name: /Add a preference/ }));
+    await user.type(page.getByRole("textbox", { name: "Preference name" }), "Style");
+    await user.type(page.getByRole("textbox", { name: "New preference text" }), "Small diffs.");
+    await user.keyboard("{Meta>}{Enter}{/Meta}");
+    expect(b.callsTo("set_profile_section")).toEqual([{ section: "style", text: "Small diffs." }]);
+    expect(await page.findByRole("article", { name: "Code style" })).toHaveTextContent("Small diffs.");
   });
 });

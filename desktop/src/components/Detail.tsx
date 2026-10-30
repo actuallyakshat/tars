@@ -1,5 +1,6 @@
 import type { Report, Status, Task, TaskSession } from "../api";
-import { ago, clampPriority, dueText, openQuestion } from "../model";
+import { ago, clampPriority, dueText, openQuestion, prLabel } from "../model";
+import { PrIcon } from "./TaskList";
 import { Composer } from "./Composer";
 import { PriorityPicker, StatusPicker } from "./StatusPicker";
 
@@ -13,6 +14,7 @@ export interface DetailActions {
   onAnswer: (text: string) => Promise<boolean>;
   onNote: (text: string) => Promise<boolean>;
   onJira: (key: string) => void;
+  onOpenUrl: (url: string) => void;
   onCopy: (text: string, what: string) => void;
   onReveal: (path: string) => void;
   onTerminal: (s: TaskSession) => void;
@@ -260,7 +262,7 @@ function ReportCard({ r, now, open, asked, answering, onAnswer, setAnswering }: 
   );
 }
 
-function Fields({ t, now, onJira, onCopy, onReveal }: { t: Task; now: Date } & DetailActions) {
+function Fields({ t, now, onJira, onOpenUrl, onCopy, onReveal }: { t: Task; now: Date } & DetailActions) {
   const rows: [string, React.ReactNode][] = [];
   if (t.jira)
     rows.push([
@@ -287,6 +289,13 @@ function Fields({ t, now, onJira, onCopy, onReveal }: { t: Task; now: Date } & D
       "branch",
       <button className="link mono" title="Copy branch name" onClick={() => onCopy(t.branch!, "branch name")}>
         {t.branch}
+      </button>,
+    ]);
+  if (t.pr)
+    rows.push([
+      "pr",
+      <button className="link pr-link" title={`Open ${t.pr}`} onClick={() => onOpenUrl(t.pr!)}>
+        <PrIcon /> {prLabel(t.pr)}
       </button>,
     ]);
   if (t.worktree)

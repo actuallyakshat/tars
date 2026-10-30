@@ -149,6 +149,7 @@ fn reads_and_writes_through_the_real_cli() {
                 jira: Some("".into()),
                 due: Some("none".into()),
                 priority: Some("low".into()),
+                pr: Some("https://github.com/acme/billing/pull/412".into()),
                 tag: vec!["urgent".into()],
                 untag: vec!["perf".into()],
                 ..Default::default()
@@ -159,13 +160,35 @@ fn reads_and_writes_through_the_real_cli() {
     assert!(edited.get("jira").is_none());
     assert!(edited.get("due").is_none());
     assert_eq!(edited["priority"], 3);
+    assert_eq!(edited["pr"], "https://github.com/acme/billing/pull/412");
     assert_eq!(edited["tags"], serde_json::json!(["backend", "urgent"]));
     assert_eq!(t.edit(1, &TaskEdit::default()).unwrap()["title"], "Retry webhooks");
 
     let repo = t.set_repo("billing-svc", "~/code/billing", Some(Path::new("/home/me"))).unwrap();
     assert_eq!(repo["path"], "/home/me/code/billing");
     assert_eq!(t.repos().unwrap()[0]["name"], "billing-svc");
-    t.remove_repo("billing-svc").unwrap();
+    e.as_agent("sess-42", &["repo", "set", "billing-svc", "-S", "tests", "-x", "make test"]);
+    let shown = t.show_repo("billing-svc").unwrap();
+    assert_eq!(shown["sections"][0]["name"], "tests");
+    assert_eq!(shown["sections"][0]["content"], "make test");
+    assert_eq!(t.profile().unwrap(), Value::Array(vec![]));
+    e.as_agent("sess-42", &["profile", "set", "style", "-x", "small diffs"]);
+    assert_eq!(t.profile().unwrap()[0]["content"], "small diffs");
+    t.set_repo_section("billing-svc", "gotchas", "-v needs docker\n- second").unwrap();
+    t.set_profile_section("style", "").unwrap();
+    assert_eq!(t.profile().unwrap(), Value::Array(vec![]));
+    t.add(&NewTask { title: "in billing".into(), repo: "billing-svc".into(), ..Default::default() }).unwrap();
+    let renamed = t.rename_repo("billing-svc", "billing").unwrap();
+    assert_eq!(renamed["name"], "billing");
+    let shown = t.show_repo("billing").unwrap();
+    let gotchas = shown["sections"].as_array().unwrap().iter().find(|s| s["name"] == "gotchas").unwrap().clone();
+    assert_eq!(gotchas["content"], "-v needs docker\n- second");
+    let moved = t.list().unwrap().as_array().unwrap().iter().find(|x| x["title"] == "in billing").unwrap().clone();
+    assert_eq!(moved["repo"], "billing");
+    t.delete(moved["id"].as_i64().unwrap()).unwrap();
+    t.set_repo_section("billing", "gotchas", "").unwrap();
+    assert_eq!(t.show_repo("billing").unwrap()["sections"].as_array().unwrap().len(), 1);
+    t.remove_repo("billing").unwrap();
     assert_eq!(t.repos().unwrap(), Value::Array(vec![]));
 
     let moved = t.mv(1, "in-review").unwrap();

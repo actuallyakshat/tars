@@ -1145,6 +1145,7 @@ func detailContent(t *store.Task, width int, showLog bool, now time.Time) string
 	}
 	field("branch", t.Branch)
 	field("worktree", t.Worktree)
+	field("pr", t.PR)
 	b.WriteString(Muted.Render(fmt.Sprintf("%-10s", "created")+Ago(t.CreatedAt)+" · updated "+Ago(t.UpdatedAt)) + "\n")
 
 	section := func(title, text string) {

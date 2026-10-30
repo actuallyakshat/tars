@@ -156,10 +156,11 @@ func TestEdit(t *testing.T) {
 	e.fails("edit", "1", "-p", "whenever")
 	e.fails("edit", "1", "-d", "someday")
 
-	e.ok("edit", "#1", "--title", "renamed", "--untag", "a", "-t", "c", "--branch", "tars/1", "--worktree", "/tmp/wt", "-s", "wip")
+	e.ok("edit", "#1", "--title", "renamed", "--untag", "a", "-t", "c", "--branch", "tars/1", "--worktree", "/tmp/wt", "-s", "wip",
+		"--pr", " https://github.com/acme/billing/pull/412 ")
 	tk := e.task("1")
 	if tk.Title != "renamed" || strings.Join(tk.Tags, ",") != "b,c" || tk.Branch != "tars/1" ||
-		tk.Worktree != "/tmp/wt" || tk.Status != "in-progress" {
+		tk.Worktree != "/tmp/wt" || tk.Status != "in-progress" || tk.PR != "https://github.com/acme/billing/pull/412" {
 		t.Fatalf("edit: %+v", tk)
 	}
 	if len(tk.Log) != 1 || tk.Log[0].Kind != "status" || tk.Log[0].Text != "inbox → in-progress" {
