@@ -269,10 +269,11 @@ func (b *board) renderColumn(i, w, h int) string {
 	tasks := b.tasks[s]
 	focused := i == b.col
 
-	head := StatusBadge(s) + Muted.Render(fmt.Sprintf(" %d", len(tasks)))
+	badge := StatusBadge(s)
 	if focused {
-		head = lipgloss.NewStyle().Underline(true).Render(StatusBadge(s)) + Muted.Render(fmt.Sprintf(" %d", len(tasks)))
+		badge = focusedBadge(s)
 	}
+	head := badge + Muted.Render(fmt.Sprintf(" %d", len(tasks)))
 	lines := []string{" " + head, ""}
 
 	if len(tasks) == 0 {

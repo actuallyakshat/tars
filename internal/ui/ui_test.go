@@ -2,12 +2,15 @@ package ui
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
 	"github.com/akshat-dubey/tars/internal/store"
 )
@@ -201,5 +204,34 @@ func TestBoardDetailView(t *testing.T) {
 	press(b, "esc")
 	if b.detail {
 		t.Fatal("esc should close detail")
+	}
+}
+
+// Styling an already-styled string (e.g. Underline over a colored badge) splits
+// its ANSI codes into visible garbage like "[1;38;2;0;134;158m". Render in full
+// color and check nothing escape-like survives once real sequences are stripped.
+func TestBoardHasNoLeakedEscapeCodes(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	b, _ := newBoard(t, 200, 40,
+		&store.Task{Title: "styled", Status: store.StatusReady, Jira: "X-1", Priority: 0, Due: "2026-11-01"},
+		&store.Task{Title: "finished", Status: store.StatusDone},
+	)
+	leak := regexp.MustCompile(`\[[0-9;]+m`)
+	for col := range b.columns {
+		b.col = col
+		for _, showDone := range []bool{false, true} {
+			b.showDone = showDone
+			b.reload()
+			plain := ansi.Strip(b.View())
+			if m := leak.FindString(plain); m != "" {
+				t.Fatalf("column %s: leaked escape code %q", b.columns[b.col], m)
+			}
+		}
+	}
+	b.col = 1 // ready, focused
+	if plain := ansi.Strip(b.View()); !strings.Contains(plain, "◇ READY 1") {
+		t.Fatalf("focused header not on one line:\n%s", plain)
 	}
 }

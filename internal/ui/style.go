@@ -52,6 +52,12 @@ func StatusBadge(s string) string {
 	return StatusStyle(s).Bold(true).Render(statusIcon[s] + " " + strings.ToUpper(s))
 }
 
+// focusedBadge is StatusBadge underlined. It styles the plain label in one
+// pass: wrapping an already-styled string in Underline mangles its ANSI codes.
+func focusedBadge(s string) string {
+	return StatusStyle(s).Bold(true).Underline(true).Render(statusIcon[s] + " " + strings.ToUpper(s))
+}
+
 func Priority(p int) string {
 	switch p {
 	case 0:
