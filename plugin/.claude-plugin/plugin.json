@@ -1,6 +1,6 @@
 {
   "name": "tars",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Your agent keeps your task list, triages raw notes into ready work, and sweeps ready tasks into tested branches. Only ever runs when you invoke it.",
   "author": {
     "name": "Akshat Dubey",
