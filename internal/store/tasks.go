@@ -17,7 +17,7 @@ const (
 	StatusDone       = "done"
 )
 
-// Statuses is the board order.
+// Statuses is the workflow order.
 var Statuses = []string{StatusInbox, StatusReady, StatusInProgress, StatusInReview, StatusBlocked, StatusDone}
 
 func ValidStatus(s string) bool {
@@ -49,6 +49,7 @@ type Task struct {
 	CreatedAt  string   `json:"created_at"`
 	UpdatedAt  string   `json:"updated_at"`
 	DoneAt     string   `json:"done_at,omitempty"`
+	Unread     bool     `json:"unread,omitempty"` // agent logged something since the user last opened it
 	Log        []Entry  `json:"log,omitempty"`
 }
 
@@ -60,10 +61,16 @@ type Entry struct {
 	Text   string `json:"text"`
 }
 
-func now() string { return time.Now().UTC().Format(time.RFC3339) }
+// tsFormat is fixed-width so timestamps compare correctly as strings in SQL.
+// It still parses with time.RFC3339.
+const tsFormat = "2006-01-02T15:04:05.000000Z07:00"
+
+func now() string { return time.Now().UTC().Format(tsFormat) }
 
 const taskCols = `id, title, body, status, priority, jira, repo, tags, due, acceptance,
-	branch, worktree, waiting_on, follow_up, created_at, updated_at, done_at`
+	branch, worktree, waiting_on, follow_up, created_at, updated_at, done_at,
+	EXISTS (SELECT 1 FROM task_log l WHERE l.task_id = tasks.id
+		AND l.author = 'agent' AND l.at > tasks.seen_at) AS unread`
 
 type scanner interface{ Scan(...any) error }
 
@@ -72,7 +79,7 @@ func scanTask(r scanner) (*Task, error) {
 	var tags string
 	err := r.Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Jira, &t.Repo, &tags,
 		&t.Due, &t.Acceptance, &t.Branch, &t.Worktree, &t.WaitingOn, &t.FollowUp,
-		&t.CreatedAt, &t.UpdatedAt, &t.DoneAt)
+		&t.CreatedAt, &t.UpdatedAt, &t.DoneAt, &t.Unread)
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +145,30 @@ func (s *Store) SaveTask(t *Task) error {
 		WHERE id=?`,
 		t.Title, t.Body, t.Status, t.Priority, t.Jira, t.Repo, strings.Join(t.Tags, ","), t.Due,
 		t.Acceptance, t.Branch, t.Worktree, t.WaitingOn, t.FollowUp, t.UpdatedAt, t.DoneAt, t.ID)
+	return err
+}
+
+// SetStatus moves t to status and logs the transition. Leaving blocked clears
+// who it was waiting on and the follow-up date.
+func (s *Store) SetStatus(t *Task, status, by string) error {
+	if t.Status == status {
+		return nil
+	}
+	prev := t.Status
+	t.Status = status
+	if status != StatusBlocked {
+		t.WaitingOn, t.FollowUp = "", ""
+	}
+	if err := s.SaveTask(t); err != nil {
+		t.Status = prev
+		return err
+	}
+	return s.AddLog(t.ID, by, "status", prev+" → "+status)
+}
+
+// MarkSeen records that the user has looked at the task, clearing Unread.
+func (s *Store) MarkSeen(id int64) error {
+	_, err := s.db.Exec(`UPDATE tasks SET seen_at = ? WHERE id = ?`, now(), id)
 	return err
 }
 

@@ -1,16 +1,11 @@
 package ui
 
 import (
-	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
-	"github.com/muesli/termenv"
 
 	"github.com/akshat-dubey/tars/internal/store"
 )
@@ -38,7 +33,7 @@ func TestRowFitsWidth(t *testing.T) {
 	}
 }
 
-func TestListGroupsInBoardOrder(t *testing.T) {
+func TestListGroupsInWorkflowOrder(t *testing.T) {
 	tasks := []*store.Task{
 		{ID: 1, Title: "a", Status: store.StatusInReview},
 		{ID: 2, Title: "b", Status: store.StatusInbox},
@@ -55,9 +50,9 @@ func TestListGroupsInBoardOrder(t *testing.T) {
 func TestDue(t *testing.T) {
 	day := func(offset int) string { return time.Now().AddDate(0, 0, offset).Format("2006-01-02") }
 	cases := map[string]string{
-		day(-2): "overdue 2d",
-		day(0):  "due today",
-		day(1):  "due tomorrow",
+		day(-2): "2d late",
+		day(0):  "today",
+		day(1):  "tomorrow",
 	}
 	for in, want := range cases {
 		if got := Due(in); !strings.Contains(got, want) {
@@ -87,151 +82,5 @@ func TestTaskCardShowsEverything(t *testing.T) {
 func TestBriefEmpty(t *testing.T) {
 	if out := Brief(&store.Brief{Date: "2026-10-30"}, 100); !strings.Contains(out, "All clear") {
 		t.Fatalf("empty brief: %s", out)
-	}
-}
-
-// --- board ---
-
-func key(s string) tea.KeyMsg {
-	switch s {
-	case "right":
-		return tea.KeyMsg{Type: tea.KeyRight}
-	case "left":
-		return tea.KeyMsg{Type: tea.KeyLeft}
-	case "down":
-		return tea.KeyMsg{Type: tea.KeyDown}
-	case "up":
-		return tea.KeyMsg{Type: tea.KeyUp}
-	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
-	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
-	}
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
-}
-
-func newBoard(t *testing.T, w, h int, tasks ...*store.Task) (*board, *store.Store) {
-	t.Helper()
-	st, err := store.Open(filepath.Join(t.TempDir(), "tars.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	for _, task := range tasks {
-		if err := st.CreateTask(task); err != nil {
-			t.Fatal(err)
-		}
-	}
-	b := &board{st: st, row: map[string]int{}, offset: map[string]int{}}
-	if err := b.reload(); err != nil {
-		t.Fatal(err)
-	}
-	b.Update(tea.WindowSizeMsg{Width: w, Height: h})
-	return b, st
-}
-
-func press(b *board, keys ...string) {
-	for _, k := range keys {
-		b.Update(key(k))
-	}
-}
-
-func TestBoardRendersAtManySizes(t *testing.T) {
-	var tasks []*store.Task
-	for i := 0; i < 30; i++ {
-		tasks = append(tasks, &store.Task{Title: strings.Repeat("task ", i%7+1), Status: store.Statuses[i%5], Jira: "X-1", Due: "2026-11-01"})
-	}
-	for _, size := range [][2]int{{20, 8}, {60, 20}, {120, 40}, {240, 60}} {
-		b, _ := newBoard(t, size[0], size[1], tasks...)
-		press(b, "down", "down", "down", "down", "down", "down", "down", "down", "right", "down")
-		view := b.View()
-		if lines := strings.Count(view, "\n") + 1; lines > size[1] {
-			t.Errorf("%dx%d: view is %d lines tall", size[0], size[1], lines)
-		}
-	}
-}
-
-func TestBoardEmptyDoesNotPanic(t *testing.T) {
-	b, _ := newBoard(t, 100, 30)
-	press(b, "down", "right", "enter", "d", "]", "[", "+", "-", "a", "a", "r")
-	if !strings.Contains(b.View(), "TARS") {
-		t.Fatal("header missing")
-	}
-}
-
-func TestBoardKeysChangeTasks(t *testing.T) {
-	b, st := newBoard(t, 200, 40, // wide enough to show all six columns
-		&store.Task{Title: "first", Priority: 2},
-		&store.Task{Title: "second", Priority: 2},
-	)
-	// Inbox column is focused; move the selected task forward one status.
-	press(b, "]")
-	got, _ := st.GetTask(1)
-	if got.Status != store.StatusReady {
-		t.Fatalf("] should move inbox → ready, got %s", got.Status)
-	}
-	if len(got.Log) != 1 || got.Log[0].Author != "user" {
-		t.Fatalf("move not logged: %+v", got.Log)
-	}
-
-	press(b, "+") // still on inbox column: task 2
-	if got, _ := st.GetTask(2); got.Priority != 1 {
-		t.Fatalf("+ should raise priority, got %d", got.Priority)
-	}
-
-	press(b, "d")
-	if got, _ := st.GetTask(2); got.Status != store.StatusDone {
-		t.Fatalf("d should mark done, got %s", got.Status)
-	}
-	if strings.Contains(b.View(), "second") {
-		t.Error("done task visible while done column is hidden")
-	}
-	press(b, "a")
-	if !strings.Contains(b.View(), "second") {
-		t.Error("a should reveal done tasks")
-	}
-}
-
-func TestBoardDetailView(t *testing.T) {
-	b, _ := newBoard(t, 120, 40, &store.Task{Title: "detail me", Body: "hidden body text"})
-	if strings.Contains(b.View(), "hidden body text") {
-		t.Fatal("body shown on board")
-	}
-	press(b, "enter")
-	if !b.detail || !strings.Contains(b.View(), "hidden body text") {
-		t.Fatal("enter should open detail with body")
-	}
-	press(b, "esc")
-	if b.detail {
-		t.Fatal("esc should close detail")
-	}
-}
-
-// Styling an already-styled string (e.g. Underline over a colored badge) splits
-// its ANSI codes into visible garbage like "[1;38;2;0;134;158m". Render in full
-// color and check nothing escape-like survives once real sequences are stripped.
-func TestBoardHasNoLeakedEscapeCodes(t *testing.T) {
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
-
-	b, _ := newBoard(t, 200, 40,
-		&store.Task{Title: "styled", Status: store.StatusReady, Jira: "X-1", Priority: 0, Due: "2026-11-01"},
-		&store.Task{Title: "finished", Status: store.StatusDone},
-	)
-	leak := regexp.MustCompile(`\[[0-9;]+m`)
-	for col := range b.columns {
-		b.col = col
-		for _, showDone := range []bool{false, true} {
-			b.showDone = showDone
-			b.reload()
-			plain := ansi.Strip(b.View())
-			if m := leak.FindString(plain); m != "" {
-				t.Fatalf("column %s: leaked escape code %q", b.columns[b.col], m)
-			}
-		}
-	}
-	b.col = 1 // ready, focused
-	if plain := ansi.Strip(b.View()); !strings.Contains(plain, "◇ READY 1") {
-		t.Fatalf("focused header not on one line:\n%s", plain)
 	}
 }

@@ -70,7 +70,7 @@ func idWidth(tasks []*store.Task) int {
 	return w
 }
 
-// List renders tasks grouped by status in board order.
+// List renders tasks grouped by status in workflow order.
 func List(tasks []*store.Task, width int) string {
 	if len(tasks) == 0 {
 		return Muted.Render("  Nothing here. Add something with ") + Accent.Render("tars add \"…\"") + "\n"

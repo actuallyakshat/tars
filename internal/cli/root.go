@@ -52,7 +52,7 @@ func NewRoot() *cobra.Command {
 		Long: `TARS keeps your engineering tasks, Jira links, repo know-how and personal
 preferences in one place, so you can drive it yourself or through an agent.
 
-Run with no arguments to open the interactive board.`,
+Run with no arguments to open the interactive task list.`,
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -80,7 +80,7 @@ Run with no arguments to open the interactive board.`,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if f, ok := a.out.(*os.File); ok && term.IsTerminal(int(f.Fd())) && !a.json {
-				return ui.RunBoard(a.st)
+				return ui.RunInbox(a.st)
 			}
 			// Not a terminal (piped, or an agent): print the list instead.
 			return a.list(store.Filter{})
@@ -90,7 +90,7 @@ Run with no arguments to open the interactive board.`,
 	root.PersistentFlags().StringVar(&a.dbPath, "db", "", "database path (default $TARS_HOME/tars.db or ~/.local/share/tars/tars.db)")
 
 	root.AddCommand(
-		boardCmd(a),
+		uiCmd(a),
 		addCmd(a), lsCmd(a), showCmd(a), editCmd(a), mvCmd(a), doneCmd(a),
 		noteCmd(a), blockCmd(a), rmCmd(a),
 		briefCmd(a), contextCmd(a),
@@ -106,12 +106,13 @@ func Execute() {
 	}
 }
 
-func boardCmd(a *app) *cobra.Command {
+func uiCmd(a *app) *cobra.Command {
 	return &cobra.Command{
-		Use:   "board",
-		Short: "Open the interactive board",
-		Args:  cobra.NoArgs,
-		RunE:  func(*cobra.Command, []string) error { return ui.RunBoard(a.st) },
+		Use:     "ui",
+		Aliases: []string{"board"},
+		Short:   "Open the interactive task list (same as bare tars)",
+		Args:    cobra.NoArgs,
+		RunE:    func(*cobra.Command, []string) error { return ui.RunInbox(a.st) },
 	}
 }
 

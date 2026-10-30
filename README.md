@@ -2,7 +2,7 @@
 
 A task ledger that you and your coding agent share.
 
-- **You** get a fast CLI and a full-screen board in the terminal (`tars`).
+- **You** get a fast CLI and a compact, keyboard-driven task list in the terminal (`tars`).
 - **Your agent** gets a JSON interface and a Claude Code plugin. Talk to it in plain language and it keeps the ledger: it captures raw notes, links Jiras, marks things done, and sweeps ready tasks into tested branches overnight.
 
 The agent only touches the ledger when you invoke it. The plugin's skills can't be triggered by the model on its own.
@@ -36,17 +36,24 @@ go install github.com/akshat-dubey/tars/cmd/tars@latest
 
 ## The CLI
 
-Run `tars` with no arguments to open the board. Keys:
+Run `tars` with no arguments to open the task list. It's a compact, Gmail-style list: one line per task, grouped by priority, with views along the top (Open · Inbox · Ready · Review · Blocked · Done). Press `enter` to open a task. On wide terminals (120+ columns) the details open beside the list; on narrower ones they take the whole screen. The activity log starts collapsed.
+
+A **●** marks tasks the agent has updated since you last opened them.
 
 | Key | Action |
 |---|---|
-| `←→↑↓` / `hjkl` | Move between columns and tasks |
-| `enter` | Open the task's details and log |
-| `[` / `]` | Move the task to the previous or next status |
-| `d` | Mark done |
-| `+` / `-` | Raise or lower priority |
-| `a` | Show or hide done tasks |
-| `q` | Quit |
+| `↑↓` / `j k` | Move (in full-screen details, `j k` go to the next/previous task) |
+| `enter` / `esc` | Open / close details |
+| `tab` / `1`–`6` | Switch view |
+| `g` | Group by priority → due → status → repo → none |
+| `/` | Search (title, Jira, repo, tags) |
+| `x` | Done (press again to reopen) |
+| `s` / `p` | Change status / priority |
+| `u` | Undo the last change |
+| `c` | Quick add: `Fix export BILL-881 !high @billing #perf due:fri` |
+| `n` | Add a note to the selected task |
+| `l` | Expand / collapse activity |
+| `?` | All keys |
 
 ```bash
 tars add "Fix CSV export timeout" -j BILL-881 -r billing-svc -d fri -p high

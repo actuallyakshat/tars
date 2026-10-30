@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/akshat-dubey/tars/internal/parse"
 	"github.com/akshat-dubey/tars/internal/store"
 	"github.com/akshat-dubey/tars/internal/ui"
 )
@@ -97,12 +98,12 @@ func (f *taskFlags) apply(cmd *cobra.Command, t *store.Task) error {
 		t.Repo = strings.TrimSpace(f.repo)
 	}
 	if ch("due") {
-		if t.Due, err = parseDate(f.due, time.Now()); err != nil {
+		if t.Due, err = parse.Date(f.due, time.Now()); err != nil {
 			return err
 		}
 	}
 	if ch("priority") {
-		if t.Priority, err = parsePriority(f.priority); err != nil {
+		if t.Priority, err = parse.Priority(f.priority); err != nil {
 			return err
 		}
 	}
@@ -268,6 +269,20 @@ func editCmd(a *app) *cobra.Command {
 			if err := a.save(t, prev, by); err != nil {
 				return err
 			}
+			// Agent edits are logged so the TUI can flag them as unread.
+			if by == "agent" {
+				var fields []string
+				for _, name := range taskFlagNames {
+					if cmd.Flags().Changed(name) && name != "status" {
+						fields = append(fields, name)
+					}
+				}
+				if len(fields) > 0 {
+					if err := a.st.AddLog(t.ID, by, "edit", "updated "+strings.Join(fields, ", ")); err != nil {
+						return err
+					}
+				}
+			}
 			t.Log = nil
 			return a.emit(t, func() string { return ui.Success(fmt.Sprintf("Updated #%d", t.ID)) + "\n" })
 		},
@@ -292,12 +307,7 @@ func setStatus(a *app, ids []string, status, by string) error {
 		if err != nil {
 			return err
 		}
-		prev := t.Status
-		t.Status = status
-		if status != store.StatusBlocked {
-			t.WaitingOn, t.FollowUp = "", ""
-		}
-		if err := a.save(t, prev, by); err != nil {
+		if err := a.st.SetStatus(t, status, by); err != nil {
 			return err
 		}
 		t.Log = nil
@@ -403,7 +413,7 @@ func blockCmd(a *app) *cobra.Command {
 			prev := t.Status
 			t.Status = store.StatusBlocked
 			t.WaitingOn = strings.TrimSpace(on)
-			if t.FollowUp, err = parseDate(follow, time.Now()); err != nil {
+			if t.FollowUp, err = parse.Date(follow, time.Now()); err != nil {
 				return err
 			}
 			if err := a.save(t, prev, by); err != nil {

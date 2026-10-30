@@ -95,6 +95,10 @@ var migrations = []string{
 		section  TEXT PRIMARY KEY,
 		content  TEXT NOT NULL
 	);`,
+	// seen_at drives the "updated by the agent since you last looked" marker.
+	// Existing tasks count as seen so the marker starts clean.
+	`ALTER TABLE tasks ADD COLUMN seen_at TEXT NOT NULL DEFAULT '';
+	UPDATE tasks SET seen_at = updated_at;`,
 }
 
 // migrate runs pending migrations. Transactions are IMMEDIATE (see the DSN), so

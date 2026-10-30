@@ -15,7 +15,8 @@ You are the interface to the user's task ledger, which lives in the `tars` CLI. 
 ## Ground rules
 
 - **The `tars` CLI is the only source of truth.** Never keep tasks anywhere else, and never make up task IDs or state. Read the ledger before you answer.
-- **Read with `--json`** (`tars ls --json`, `tars show 12 --json`). Pass **`--by agent`** on every write that accepts it (`edit`, `mv`, `done`, `note`, `block`), so the log shows who did what.
+- **Read with `--json`** (`tars ls --json`, `tars show 12 --json`).
+- **Who did it decides `--by`.** When you carry out something the user explicitly asked for ("mark 12 done", "link 15 to BILL-900", "note that…"), leave `--by` off; it defaults to `user`. Pass `--by agent` only for work whose content you decided yourself: triage (section 3) and starting work on a resumed task (section 6). The TUI flags agent-authored changes with ● as "the agent did something you haven't looked at", so mislabelling the user's own requests makes that marker noise.
 - **Only do what was asked.** A question gets an answer, not changes. Never start implementing a task from here. That's what `/tars:sweep` is for, or an explicit "work on #12".
 - If `tars` is not installed (`command -v tars` fails), tell the user to install it from the README and stop.
 - Run `tars <cmd> --help` whenever you're unsure of a flag.
@@ -37,7 +38,7 @@ Pick the narrowest command that answers it:
 | Morning-style overview | `tars brief --json` |
 | One task in depth | `tars show 12 --json` |
 
-Answer briefly and lead with the answer. Reference tasks as `#id`. For lists, use a compact table (id, title, Jira, repo, status or due) and leave out empty columns. Mention that `tars` in a terminal opens the visual board if that would help.
+Answer briefly and lead with the answer. Reference tasks as `#id`. For lists, use a compact table (id, title, Jira, repo, status or due) and leave out empty columns. Mention that running `tars` in a terminal opens the interactive list, if that would help.
 
 ### 2. Capture tasks from raw input
 The user often dumps several things at once, like "need to fix the CSV export in billing (BILL-881) by friday, also ping Rahul about staging keys".
@@ -70,7 +71,7 @@ A task is **ready** only when it has a repo whose profile has a `path`, a clear 
 ### 4. Update tasks
 Requests like "mark 12 done", "#14 is blocked on design", "link 15 to BILL-900", or "bump 9 to urgent".
 
-Map them to `tars done`, `tars block`, `tars edit -j`, `tars edit -p`, `tars mv`, or `tars note`. Confirm in one line. Ask before `tars rm`, because deleting is permanent and `done` is usually what the user meant.
+Map them to `tars done`, `tars block`, `tars edit -j`, `tars edit -p`, `tars mv`, or `tars note`, without `--by agent`: these are the user's own changes. Confirm in one line. Ask before `tars rm`, because deleting is permanent and `done` is usually what the user meant.
 
 ### 5. Remember repo know-how or preferences
 Requests like "in billing-svc integration tests need docker compose up db first", "our DoD is …", or "I prefer small PRs and no mocks for the DB".

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -383,5 +384,84 @@ func TestConcurrentWriters(t *testing.T) {
 	defer s.Close()
 	if entries, _ := s.Log(task.ID); len(entries) != 40 {
 		t.Fatalf("got %d log entries, want 40", len(entries))
+	}
+}
+
+func TestUnreadTracksAgentActivity(t *testing.T) {
+	s := openTemp(t)
+	task := mustCreate(t, s, &Task{Title: "x"})
+	unread := func() bool {
+		t.Helper()
+		got, err := s.GetTask(task.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listed, _ := s.ListTasks(Filter{})
+		if listed[0].Unread != got.Unread {
+			t.Fatal("ListTasks and GetTask disagree on unread")
+		}
+		return got.Unread
+	}
+	if unread() {
+		t.Fatal("new task should not be unread")
+	}
+	s.AddLog(task.ID, "user", "note", "mine")
+	if unread() {
+		t.Fatal("user activity should not mark unread")
+	}
+	s.AddLog(task.ID, "agent", "sweep", "theirs")
+	if !unread() {
+		t.Fatal("agent activity should mark unread")
+	}
+	if err := s.MarkSeen(task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if unread() {
+		t.Fatal("MarkSeen should clear unread")
+	}
+	s.AddLog(task.ID, "agent", "note", "more")
+	if !unread() {
+		t.Fatal("new agent activity after seen should mark unread again")
+	}
+}
+
+// Databases created before seen_at existed must upgrade without flagging
+// every task the agent ever touched as unread.
+func TestMigrationFromV1(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tars.db")
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := "2026-10-29T10:00:00Z" // second-precision timestamps, as v1 wrote them
+	for _, q := range []string{
+		`CREATE TABLE schema_version (v INTEGER NOT NULL)`,
+		`INSERT INTO schema_version (v) VALUES (1)`,
+		migrations[0],
+		`INSERT INTO tasks (title, created_at, updated_at) VALUES ('legacy', '` + old + `', '` + old + `')`,
+		`INSERT INTO task_log (task_id, at, author, kind, text) VALUES (1, '` + old + `', 'agent', 'sweep', 'old work')`,
+	} {
+		if _, err := raw.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	raw.Close()
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	got, err := s.GetTask(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Unread || got.Title != "legacy" || len(got.Log) != 1 {
+		t.Fatalf("upgraded task: %+v", got)
+	}
+	// New agent activity after the upgrade still registers.
+	s.AddLog(1, "agent", "note", "new work")
+	if got, _ := s.GetTask(1); !got.Unread {
+		t.Fatal("agent activity after upgrade should mark unread")
 	}
 }
