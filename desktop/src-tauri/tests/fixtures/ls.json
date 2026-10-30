@@ -1,0 +1,39 @@
+[
+  {
+    "id": 3,
+    "title": "Rotate staging keys",
+    "status": "inbox",
+    "priority": 0,
+    "created_at": "2026-10-30T08:52:42.059156Z",
+    "updated_at": "2026-10-30T08:52:42.059160Z"
+  },
+  {
+    "id": 1,
+    "title": "Add retry to webhook sender",
+    "body": "Webhooks drop on 502.",
+    "status": "inbox",
+    "priority": 1,
+    "jira": "BILL-881",
+    "repo": "billing-svc",
+    "tags": [
+      "backend"
+    ],
+    "due": "2026-11-01",
+    "acceptance": "retries 5 times",
+    "branch": "tars/1-webhook-retry",
+    "worktree": "/work/billing-1",
+    "created_at": "2026-10-30T08:52:42.038126Z",
+    "updated_at": "2026-10-30T08:52:42.084308Z",
+    "unread": true,
+    "needs_you": true
+  },
+  {
+    "id": 2,
+    "title": "Tidy README",
+    "status": "inbox",
+    "priority": 3,
+    "created_at": "2026-10-30T08:52:42.049966Z",
+    "updated_at": "2026-10-30T08:52:42.076767Z",
+    "unread": true
+  }
+]
