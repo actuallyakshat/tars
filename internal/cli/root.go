@@ -48,7 +48,7 @@ func NewRoot() *cobra.Command {
 	a := &app{}
 	root := &cobra.Command{
 		Use:   "tars",
-		Short: "TARS · Track · Assign · Run · Ship — a task ledger you and your agents share",
+		Short: "A task list you and your coding agent share",
 		Long: `TARS keeps your engineering tasks, Jira links, repo know-how and personal
 preferences in one place, so you can drive it yourself or through an agent.
 

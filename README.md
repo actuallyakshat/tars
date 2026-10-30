@@ -1,4 +1,4 @@
-# TARS · Track · Assign · Run · Ship
+# tars
 
 A task ledger that you and your coding agent share.
 

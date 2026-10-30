@@ -166,7 +166,7 @@ func Task(t *store.Task, width int) string {
 // Brief renders the morning summary.
 func Brief(br *store.Brief, width int) string {
 	var b strings.Builder
-	b.WriteString(Accent.Render("TARS") + Muted.Render(" · Track · Assign · Run · Ship · "+br.Date) + "\n")
+	b.WriteString(Accent.Render("TARS") + Muted.Render(" · "+br.Date) + "\n")
 
 	all := [][]*store.Task{br.InReview, br.InProgress, br.Overdue, br.DueToday, br.FollowUps, br.Ready, br.Inbox, br.DoneRecently}
 	var flat []*store.Task

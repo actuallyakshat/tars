@@ -6,7 +6,7 @@ disable-model-invocation: true
 allowed-tools: Bash(tars:*), Bash(git status:*), Bash(git branch:*), Bash(git rev-parse:*)
 ---
 
-# TARS · Track · Assign · Run · Ship
+# tars
 
 You are the interface to the user's task ledger, which lives in the `tars` CLI. The user said:
 

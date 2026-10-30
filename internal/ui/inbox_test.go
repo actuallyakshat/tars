@@ -238,7 +238,7 @@ func TestUnreadMarker(t *testing.T) {
 	if !get(t, st, 1).Unread || get(t, st, 2).Unread {
 		t.Fatal("only agent activity should mark a task unread")
 	}
-	if !strings.Contains(m.topBar(), "Open 2●") {
+	if !strings.Contains(m.topBar(), "Open 2 ●") {
 		t.Fatalf("top bar should flag unread: %s", m.topBar())
 	}
 	press(m, "enter") // opening marks it seen

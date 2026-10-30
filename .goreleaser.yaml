@@ -16,5 +16,5 @@ brews:
       owner: akshat-dubey
       name: homebrew-tap
     directory: Formula
-    description: "TARS · Track · Assign · Run · Ship — a task ledger you and your agents share"
+    description: "A task list you and your coding agent share"
     test: system "#{bin}/tars", "--version"

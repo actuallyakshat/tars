@@ -780,12 +780,14 @@ func (m *inbox) topBar() string {
 			st = tabOnSt
 		}
 		left += st.Render(label)
+		// A space before the dot, and the same slot reserved when there is no
+		// dot, so tabs neither crowd it nor shift when it appears.
 		if m.unread[i] > 0 && i != len(views)-1 {
-			left += unreadSt.Render("●")
+			left += " " + unreadSt.Render("●")
 		} else {
-			left += " "
+			left += "  "
 		}
-		left += "  "
+		left += "   "
 	}
 	right := "group: " + m.group.String()
 	if m.query != "" {

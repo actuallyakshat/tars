@@ -3,7 +3,7 @@
   "owner": {
     "name": "Akshat Dubey"
   },
-  "description": "TARS · Track · Assign · Run · Ship — a task ledger you and your coding agent share.",
+  "description": "A task list you and your coding agent share.",
   "plugins": [
     {
       "name": "tars",
