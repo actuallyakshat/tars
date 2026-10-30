@@ -15,14 +15,14 @@
         "title": "tars",
         "width": 1280,
         "height": 800,
-        "minWidth": 900,
+        "minWidth": 960,
         "minHeight": 520,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:"
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:"
     }
   },
   "bundle": {
