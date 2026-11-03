@@ -41,7 +41,7 @@ export function UnfiledPage({
   isNew?: (c: Capture) => boolean;
 }) {
   return (
-    <Page title="Unfiled" onBack={onBack}>
+    <Page title="Unfiled" onBack={onBack} full>
       <p className="page-lede">
         Claude sessions that changed code but didn't match a task. File each into a task, make it a new one, or dismiss it.
       </p>
