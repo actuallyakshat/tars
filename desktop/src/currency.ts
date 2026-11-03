@@ -56,7 +56,8 @@ function fmt(c: Currency, digits: number) {
 /** Formats an amount already in c. Tiny amounts get more digits so they don't read as zero. */
 export function formatMoney(amount: number, c: Currency): string {
   const abs = Math.abs(amount);
-  const digits = abs > 0 && abs < 0.1 ? (c === "INR" ? 2 : 3) : abs >= 10_000 ? 0 : 2;
+  // Whole units from 1,000 up, so a column of costs reads alike.
+  const digits = abs > 0 && abs < 0.1 ? (c === "INR" ? 2 : 3) : abs >= 1_000 ? 0 : 2;
   return fmt(c, digits).format(amount);
 }
 

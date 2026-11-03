@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, type LiveStatus, type UsageLine, type UsageSummary } from "../api";
 import { CURRENCIES, formatTokens, money, rateFor, useCurrency, type Currency } from "../currency";
 import { Page } from "./Pages";
@@ -142,106 +142,145 @@ function DailyChart({ days, fmt }: { days: UsageLine[]; fmt: Fmt }) {
   );
 }
 
-function ShareBar({ share }: { share: number }) {
-  return (
-    <span className="usage-share" aria-hidden="true">
-      <span style={{ width: `${Math.max(0, Math.min(1, share)) * 100}%` }} />
+const pct = (share: number) => (share >= 0.995 ? "100%" : share >= 0.01 ? `${Math.round(share * 100)}%` : share > 0 ? "<1%" : "0%");
+
+interface RowData {
+  key: string;
+  name: string;
+  /** Shown after the name, muted: a task's number, a model's family. */
+  tag?: string;
+  cost: string;
+  meta: string;
+  share: number;
+  dim?: boolean;
+  onOpen?: () => void;
+}
+
+/** A breakdown row: name and cost, then what it's made of and its share. */
+function Row({ r }: { r: RowData }) {
+  const name = (
+    <span className="usage-row-name" title={r.name}>
+      {r.name}
     </span>
+  );
+  return (
+    <li className={"usage-row" + (r.dim ? " dim" : "")}>
+      <div className="usage-row-top">
+        {r.onOpen ? (
+          <button className="usage-row-open" onClick={r.onOpen} title={`Open “${r.name}”`}>
+            {name}
+          </button>
+        ) : (
+          name
+        )}
+        <span className="usage-row-cost">{r.cost}</span>
+      </div>
+      <div className="usage-row-bar" aria-hidden="true">
+        <span style={{ width: `${Math.max(0, Math.min(1, r.share)) * 100}%` }} />
+      </div>
+      <div className="usage-row-meta">
+        <span>
+          {r.tag && <span className="usage-row-tag">{r.tag}</span>}
+          {r.meta}
+        </span>
+        <span className="usage-row-share">{pct(r.share)}</span>
+      </div>
+    </li>
   );
 }
 
+function Card({ title, count, children }: { title: string; count?: string; children: ReactNode }) {
+  return (
+    <section className="usage-card" aria-label={title}>
+      <header className="usage-card-head">
+        <h2 className="usage-card-title">{title}</h2>
+        {count && <span className="usage-card-count">{count}</span>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
 function Breakdown({
   title,
+  noun,
   rows,
   total,
   fmt,
   empty,
   name,
+  tag,
   onOpen,
-  limit = 8,
+  limit = 6,
 }: {
   title: string;
+  noun: string;
   rows: UsageLine[];
   total: number;
   fmt: Fmt;
   empty: string;
   name: (l: UsageLine) => string;
+  tag?: (l: UsageLine) => string;
   onOpen?: (l: UsageLine) => void;
   limit?: number;
 }) {
   const [all, setAll] = useState(false);
   const shown = all ? rows : rows.slice(0, limit);
   return (
-    <section className="usage-card" aria-label={title}>
-      <h2 className="usage-card-title">{title}</h2>
+    <Card title={title} count={rows.length ? plural(rows.length, noun) : undefined}>
       {rows.length === 0 ? (
         <p className="muted usage-empty">{empty}</p>
       ) : (
-        <table className="usage-table">
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col" className="num">Cost</th>
-              <th scope="col" className="num">Tokens</th>
-              <th scope="col" className="num">Sessions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((l) => (
-              <tr key={l.key}>
-                <th scope="row">
-                  {onOpen ? (
-                    <button className="link usage-open" onClick={() => onOpen(l)} title="Open the task">
-                      {name(l)}
-                    </button>
-                  ) : (
-                    <span className={l.unpriced_calls === l.calls ? "muted" : ""}>{name(l)}</span>
-                  )}
-                  <ShareBar share={total > 0 ? l.cost_usd / total : 0} />
-                </th>
-                <td className="num">{l.unpriced_calls === l.calls ? <span className="muted" title="No price for this model">—</span> : fmt(l.cost_usd)}</td>
-                <td className="num muted">{formatTokens(l.total_tokens)}</td>
-                <td className="num muted">{l.sessions}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ul className="usage-rows">
+          {shown.map((l) => {
+            const unpriced = l.calls > 0 && l.unpriced_calls === l.calls;
+            return (
+              <Row
+                key={l.key}
+                r={{
+                  key: l.key,
+                  name: name(l),
+                  tag: tag?.(l),
+                  cost: unpriced ? "No price" : fmt(l.cost_usd),
+                  meta: `${formatTokens(l.total_tokens)} tokens · ${plural(l.sessions, "session")}`,
+                  share: total > 0 ? l.cost_usd / total : 0,
+                  dim: unpriced,
+                  onOpen: onOpen && (() => onOpen(l)),
+                }}
+              />
+            );
+          })}
+        </ul>
       )}
       {rows.length > limit && (
-        <button className="link usage-more" onClick={() => setAll(!all)}>
+        <button className="usage-more" onClick={() => setAll(!all)}>
           {all ? "Show fewer" : `Show all ${rows.length}`}
         </button>
       )}
-    </section>
+    </Card>
   );
 }
 
 function CostByType({ line, fmt }: { line: UsageLine; fmt: Fmt }) {
   const rows = [
-    ["Output", line.cost.output, line.tokens.output],
-    ["Cache writes", line.cost.cache_write, line.tokens.cache_write],
     ["Cache reads", line.cost.cache_read, line.tokens.cache_read],
+    ["Cache writes", line.cost.cache_write, line.tokens.cache_write],
+    ["Output", line.cost.output, line.tokens.output],
     ["Uncached input", line.cost.input, line.tokens.input],
   ] as const;
   const total = rows.reduce((s, r) => s + r[1], 0);
   return (
-    <section className="usage-card" aria-label="Cost by token type">
-      <h2 className="usage-card-title">By token type</h2>
-      <table className="usage-table">
-        <tbody>
-          {rows.map(([label, cost, tokens]) => (
-            <tr key={label}>
-              <th scope="row">
-                {label}
-                <ShareBar share={total > 0 ? cost / total : 0} />
-              </th>
-              <td className="num">{fmt(cost)}</td>
-              <td className="num muted">{formatTokens(tokens)}</td>
-            </tr>
+    <Card title="By token type">
+      <ul className="usage-rows">
+        {[...rows]
+          .sort((a, b) => b[1] - a[1])
+          .map(([label, cost, tokens]) => (
+            <Row key={label} r={{ key: label, name: label, cost: fmt(cost), meta: `${formatTokens(tokens)} tokens`, share: total > 0 ? cost / total : 0 }} />
           ))}
-        </tbody>
-      </table>
-    </section>
+      </ul>
+    </Card>
   );
 }
 
@@ -394,15 +433,17 @@ export function UsagePage({ onBack, onOpenTask }: { onBack: () => void; onOpenTa
               <div className="usage-grid">
                 <Breakdown
                   title="By task"
+                  noun="task"
                   rows={data.tasks}
                   total={t.cost_usd}
                   fmt={m.format}
-                  empty="No sessions here are linked to a task yet."
-                  name={(l) => `#${l.key} ${l.label ?? ""}`}
+                  empty="No sessions in this period are linked to a task."
+                  name={(l) => l.label || `Task ${l.key}`}
+                  tag={(l) => `#${l.key}`}
                   onOpen={(l) => onOpenTask(Number(l.key))}
                 />
-                <Breakdown title="By repo" rows={data.repos} total={t.cost_usd} fmt={m.format} empty="No repo information." name={(l) => l.key} />
-                <Breakdown title="By model" rows={data.models} total={t.cost_usd} fmt={m.format} empty="No models." name={(l) => l.key} />
+                <Breakdown title="By model" noun="model" rows={data.models} total={t.cost_usd} fmt={m.format} empty="No models." name={(l) => l.key} />
+                <Breakdown title="By repo" noun="repo" rows={data.repos} total={t.cost_usd} fmt={m.format} empty="No repo information." name={(l) => l.key} />
                 <CostByType line={t} fmt={m.format} />
               </div>
             </>
