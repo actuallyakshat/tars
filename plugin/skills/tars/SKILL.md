@@ -16,7 +16,7 @@ tars is the one place that records what the user's coding agents are doing. Ever
 
 - **Load the user's preferences first.** Run `tars context <id>` if the request names a task, `tars context -r <repo>` if it names a repo, or plain `tars context` otherwise (it picks the repo profile whose path contains the current directory). Follow the personal and repo profile in everything you do from here. The repo's CLAUDE.md / AGENTS.md still take precedence.
 - **The `tars` CLI is the only source of truth.** Never keep tasks anywhere else, and never make up task IDs or state. Read before you answer, with `--json` (`tars ls --json`, `tars show 12 --json`).
-- **Report, don't narrate.** Whenever you finish work on a task, end with `tars report <id> --done "…" [--verified "…"] [--needs-you "…"] [--next "…"]`: a few short lines the user can read in seconds. Fields are capped at 240 characters. The current session is linked to the task automatically, so the user can resume it for details. If the task's latest report has an answered question, read the answer with `tars show <id> --json` first.
+- **Report, don't narrate.** Whenever you finish work on a task, end with `tars report <id> --done "…" [--verified "…"] [--needs-you "…"] [--next "…"]`: a few short lines the user can read in seconds. Fields are capped at 240 characters. The current session is linked to the task automatically, so the user can resume it for details; add `--thread "…"` to name, in a few words, what this session did for the task (it's shown in the task's Sessions list). If the task's latest report has an answered question, read the answer with `tars show <id> --json` first.
 - **Record pull requests.** Whenever you open a pull request for a task, or find one already open for its branch, run `tars edit <id> --pr <url>`.
 - **Who did it decides `--by`.** When you carry out something the user asked for ("mark 12 done", "link 15 to BILL-900"), leave `--by` off; it defaults to `user`. Pass `--by agent` only for content you decided yourself. Agent-authored changes show as unread (●), so mislabelling the user's own requests makes that marker noise.
 - **Only do what was asked.** A question gets an answer, not changes. Don't start implementing a task from here unless the user says so ("work on #12").
@@ -50,7 +50,7 @@ Requests like "file my sessions", "what's unfiled?", or "clean up the inbox".
 2. For each, suggest where it belongs: an existing open task (`tars ls -r <repo> --json`), a new task, or nothing (exploration, a one-off). Show your suggestions as one short table and let the user confirm or correct them, using AskUserQuestion when it's available.
 3. Apply them: `tars file <session> <id>`, `tars file <session> --new [-t "<title>"]`, or `tars dismiss <session>`.
 
-If two tasks turn out to be the same work, offer `tars merge <from> <into>`: sessions, reports and the log move into one task.
+If two tasks turn out to be the same work, offer `tars merge <from> <into>`: sessions, reports and the log move into one task. If a session landed on the wrong task, `tars unlink <session> [--task <id>]` sends it back to unfiled.
 
 ### 3. Capture tasks from notes
 The user often dumps several things at once, like "need to fix the CSV export in billing (BILL-881) by friday, also ping Rahul about staging keys".
@@ -84,3 +84,11 @@ Requests like "resume 12" or "pick up where I left off on the export bug".
 
 ### 7. Capture settings
 "Stop tracking this repo", "turn capture off": `tars capture off --repo <name>` or `tars capture off`, and `on` to undo. Plain `tars capture` shows what's on.
+
+### 8. Todo lists
+Requests like "add 'bump Go' to my release checklist" or "what's left on tech-debt". Todo lists are plain named checklists, separate from tasks: don't turn them into tasks, and don't add tasks to them.
+
+- `tars todo ls --json` shows every list with its items. A list is named by its id or its name (any case); an item by its id.
+- `tars todo list new <name>`, `tars todo add <list> -- <text>`, `tars todo edit <item> -- <text>`, `tars todo check <item>…` / `uncheck`.
+- Reorder with `tars todo move <item> <position>` (1 is first), or into another list with `--list <list>`. `tars todo list move <list> <position>` reorders lists.
+- `tars todo rm <item>…`, `tars todo clear <list>` (removes checked items). `tars todo list rm <list>` refuses while the list has items; only add `--force` when the user asked to delete it along with its items.

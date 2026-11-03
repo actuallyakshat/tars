@@ -283,6 +283,7 @@ fn files_captured_sessions_and_merges_tasks() {
     assert_eq!(unfiled.as_array().unwrap().len(), 2);
     assert_eq!(unfiled[0]["repo"], "billing");
     assert_eq!(unfiled[0]["edits"], 1);
+    assert_eq!(t.captured().unwrap().as_array().unwrap().len(), 2);
 
     let filed = t.file_session("sess-a", None, "Faster exports").unwrap();
     let id = filed["task_id"].as_i64().unwrap();
@@ -295,6 +296,13 @@ fn files_captured_sessions_and_merges_tasks() {
     t.merge(other, id).unwrap();
     let merged = t.show(id).unwrap();
     assert_eq!(merged["sessions"].as_array().unwrap().len(), 2);
+    assert_eq!(merged["sessions"][0]["via"], "user");
+    t.unlink(id, "sess-b").unwrap();
+    assert_eq!(t.show(id).unwrap()["sessions"].as_array().unwrap().len(), 1);
+    assert_eq!(t.unfiled().unwrap()[0]["session_id"], "sess-b");
+    let captured = t.captured().unwrap();
+    assert_eq!(captured.as_array().unwrap().len(), 2);
+    assert!(captured.as_array().unwrap().iter().any(|c| c["state"] == "linked" && c["task_id"] == id));
     assert_eq!(t.show(other).unwrap_err().kind, ErrorKind::Failed);
 
     assert_eq!(t.capture(None, None).unwrap()["on"], true);
@@ -302,4 +310,47 @@ fn files_captured_sessions_and_merges_tasks() {
     t.set_repo("billing", repo.to_str().unwrap(), None).unwrap();
     assert_eq!(t.capture(Some(false), Some("billing")).unwrap()["off_repos"], serde_json::json!(["billing"]));
     assert_eq!(t.repos().unwrap()[0]["capture_off"], true);
+}
+
+#[test]
+fn todo_lists_round_trip_through_the_cli() {
+    let e = env();
+    let t = &e.tars;
+    assert_eq!(t.todos().unwrap(), Value::Array(vec![]));
+
+    let g = t.todo_new_list(" Release ").unwrap();
+    assert_eq!(g["name"], "Release");
+    let gid = g["id"].as_i64().unwrap();
+    let h = t.todo_new_list("Cleanup").unwrap()["id"].as_i64().unwrap();
+    // The CLI's own checks reach the app as plain messages.
+    let dup = t.todo_new_list("release").unwrap_err();
+    assert_eq!(dup.kind, ErrorKind::Failed);
+    assert_eq!(dup.message, "there's already a todo list called \"release\"");
+    assert!(t.todo_new_list("-x").unwrap_err().message.contains("can't start with"));
+
+    let race = t.todo_add(gid, " -race in CI ").unwrap();
+    assert_eq!(race["text"], "-race in CI");
+    let race = race["id"].as_i64().unwrap();
+    let tag = t.todo_add(gid, "Tag v0.4.0").unwrap()["id"].as_i64().unwrap();
+    assert_eq!(t.todo_edit(tag, "-").unwrap()["text"], "-");
+    assert_eq!(t.todo_check(race, true).unwrap()[0]["done"], true);
+    t.todo_move(tag, 1, None).unwrap();
+    t.todo_move(race, 1, Some(h)).unwrap();
+    t.todo_move_list(h, 1).unwrap();
+    t.todo_rename_list(gid, "Ship it").unwrap();
+
+    let ls = t.todos().unwrap();
+    assert_eq!(ls[0]["name"], "Cleanup");
+    assert_eq!(ls[0]["items"][0]["text"], "-race in CI");
+    assert_eq!(ls[1]["name"], "Ship it");
+    assert_eq!(ls[1]["items"][0]["text"], "-");
+    assert_eq!(t.todo_move(tag, 9, None).unwrap_err().kind, ErrorKind::Failed);
+
+    assert_eq!(t.todo_clear(h).unwrap()["cleared"], 1);
+    let err = t.todo_remove_list(gid, false).unwrap_err();
+    assert!(err.message.contains("--force"), "{}", err.message);
+    t.todo_remove_list(gid, true).unwrap();
+    t.todo_remove_list(h, false).unwrap();
+    assert_eq!(t.todos().unwrap(), Value::Array(vec![]));
+    assert_eq!(t.todo_remove(tag).unwrap_err().message, format!("todo {tag}: not found"));
 }

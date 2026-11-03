@@ -83,71 +83,99 @@ func (a *app) repoFor(g gitState) (name string, off bool) {
 	return filepath.Base(g.Root), false
 }
 
-// match is the task a session belongs to, or the tasks it might.
+// match is the task a session belongs to, or hints about which it might be.
 type match struct {
-	Task       *store.Task
-	Why        string
-	Candidates []*store.Task
+	Task  *store.Task
+	Via   string // why Task matched; one of the store.Via constants
+	Why   string // the same, for Claude to read
+	Hints []hint
+}
+
+// hint is a task the session may be for, and what points at it.
+type hint struct {
+	Task   *store.Task
+	Reason string
 }
 
 var (
 	tarsBranch = regexp.MustCompile(`^tars/(\d+)(?:-|$)`)
 	jiraKey    = regexp.MustCompile(`\b[A-Z][A-Z0-9]+-\d+\b`)
 	wordRe     = regexp.MustCompile(`[a-z0-9]+`)
+	// "#21" in a prompt, but not "PR #21" or "issue #21", which are GitHub's.
+	taskRef = regexp.MustCompile(`(?i)(?:^|[^\w])(pr |pull |issue |pull request )?#(\d+)\b`)
 )
 
-// findTask works out which task a session is for. Branch, worktree, PR and
-// Jira matches are certain; matching the prompt's words against task titles
-// only produces candidates for the user to confirm.
+// findTask works out which task a session is for. Only signals that name a
+// task are certain: a tars/<id> branch, a worktree made for the task, its PR
+// or its Jira key. A branch checked out in the main checkout isn't, since
+// people do unrelated jobs without switching branches; it's a hint, like a
+// "#21" in the prompt or a title with the same words. Claude, which reads the
+// request, decides on hints.
 func (a *app) findTask(g gitState, repo, prompt string) (match, error) {
 	if m := tarsBranch.FindStringSubmatch(g.Branch); m != nil {
 		id, _ := strconv.ParseInt(m[1], 10, 64)
 		if t, err := a.st.GetTask(id); err == nil {
-			return match{Task: t, Why: "branch " + g.Branch}, nil
+			return match{Task: t, Via: store.ViaBranch, Why: "its branch " + g.Branch}, nil
 		}
 	}
 	open, err := a.st.ListTasks(store.Filter{})
 	if err != nil {
 		return match{}, err
 	}
-	sameRepo := func(t *store.Task) bool { return t.Repo == "" || t.Repo == repo }
-	certain := func(why string, keep func(*store.Task) bool) (match, bool) {
-		var hits []*store.Task
+	only := func(keep func(*store.Task) bool) *store.Task {
+		var hit *store.Task
 		for _, t := range open {
 			if keep(t) {
-				hits = append(hits, t)
+				if hit != nil {
+					return nil // more than one: not certain
+				}
+				hit = t
 			}
 		}
-		switch len(hits) {
-		case 0:
-			return match{}, false
-		case 1:
-			return match{Task: hits[0], Why: why}, true
-		}
-		if len(hits) > 3 {
-			hits = hits[:3]
-		}
-		return match{Candidates: hits}, true
-	}
-	if !store.TrunkBranch(g.Branch) {
-		if m, ok := certain("branch "+g.Branch, func(t *store.Task) bool { return t.Branch == g.Branch && sameRepo(t) }); ok {
-			return m, nil
-		}
+		return hit
 	}
 	if g.Worktree != g.Root {
-		if m, ok := certain("worktree "+g.Worktree, func(t *store.Task) bool { return t.Worktree == g.Worktree }); ok {
-			return m, nil
+		if t := only(func(t *store.Task) bool { return t.Worktree == g.Worktree }); t != nil {
+			return match{Task: t, Via: store.ViaWorktree, Why: "its worktree " + g.Worktree}, nil
 		}
 	}
-	if m, ok := certain("its pull request", func(t *store.Task) bool { return t.PR != "" && strings.Contains(prompt, t.PR) }); ok {
-		return m, nil
+	if t := only(func(t *store.Task) bool { return t.PR != "" && strings.Contains(prompt, t.PR) }); t != nil {
+		return match{Task: t, Via: store.ViaPR, Why: "its pull request"}, nil
 	}
 	for _, key := range append(jiraKey.FindAllString(strings.ToUpper(g.Branch), -1), jiraKey.FindAllString(prompt, -1)...) {
-		if m, ok := certain("Jira "+key, func(t *store.Task) bool { return strings.EqualFold(t.Jira, key) }); ok {
-			return m, nil
+		if t := only(func(t *store.Task) bool { return strings.EqualFold(t.Jira, key) }); t != nil {
+			return match{Task: t, Via: store.ViaJira, Why: "Jira " + key}, nil
 		}
 	}
-	return match{Candidates: similar(open, repo, prompt)}, nil
+
+	var m match
+	seen := map[int64]bool{}
+	add := func(t *store.Task, reason string) {
+		if !seen[t.ID] && len(m.Hints) < 4 {
+			seen[t.ID] = true
+			m.Hints = append(m.Hints, hint{t, reason})
+		}
+	}
+	for _, ref := range taskRef.FindAllStringSubmatch(prompt, -1) {
+		if ref[1] != "" {
+			continue
+		}
+		id, _ := strconv.ParseInt(ref[2], 10, 64)
+		if t, err := a.st.GetTask(id); err == nil {
+			add(t, "the prompt mentions #"+ref[2])
+		}
+	}
+	if !store.TrunkBranch(g.Branch) {
+		for _, t := range open {
+			if t.Branch == g.Branch && (t.Repo == "" || t.Repo == repo) {
+				add(t, "this checkout is on its branch "+g.Branch+", but other work happens here too")
+			}
+		}
+	}
+	for _, t := range similar(open, repo, prompt) {
+		add(t, "its title shares words with the prompt")
+	}
+	return m, nil
 }
 
 var stopWords = map[string]bool{
@@ -298,33 +326,36 @@ func (a *app) capturePrompt(in hookInput) (string, error) {
 		return "", err
 	}
 	if m.Task != nil {
-		if err := a.fileSession(c, m.Task); err != nil {
+		if err := a.fileSession(c, m.Task, m.Via); err != nil {
 			return "", err
 		}
-		return fmt.Sprintf(`tars: this session is linked to task #%d "%s" (matched by %s).
-Run `+"`tars context %d`"+` for its preferences and history before changing code, if you haven't.
-When you finish a piece of work, record it in a line or two: `+"`tars report %d --done \"…\"`"+` (add --needs-you "…" if you need an answer).`,
-			m.Task.ID, m.Task.Title, m.Why, m.Task.ID, m.Task.ID), nil
+		return fmt.Sprintf(`%[1]s: this session is linked to task #%[2]d "%[3]s" (matched by %[4]s).
+Once you understand the request, name this thread for the user in a few words saying what this session does for the task: `+"`%[1]s link %[2]d --thread \"…\"`"+`.
+Run `+"`%[1]s context %[2]d`"+` for its preferences and history before changing code, if you haven't.
+When you finish a piece of work, record it in a line or two: `+"`%[1]s report %[2]d --done \"…\"`"+` (add --needs-you "…" if you need an answer).
+If the user's request turns out not to be this task's work, run `+"`%[1]s unlink`"+`.`,
+			self(), m.Task.ID, m.Task.Title, m.Why), nil
 	}
-	// Sessions started by a tars command link themselves; don't ask in them.
-	if len(m.Candidates) == 0 || strings.HasPrefix(strings.TrimSpace(in.Prompt), "/tars:") {
+	// Sessions started by a tars command link themselves.
+	if len(m.Hints) == 0 || strings.HasPrefix(strings.TrimSpace(in.Prompt), "/tars") {
 		return "", nil
 	}
 	var b strings.Builder
-	b.WriteString("tars: this session might be work on one of these tasks:\n")
-	for _, t := range m.Candidates {
-		fmt.Fprintf(&b, "  #%d %s [%s]\n", t.ID, t.Title, t.Status)
+	b.WriteString(self() + ": this session isn't linked to a task. Possible matches:\n")
+	for _, h := range m.Hints {
+		fmt.Fprintf(&b, "  #%d %s [%s]: %s\n", h.Task.ID, h.Task.Title, h.Task.Status, h.Reason)
 	}
-	b.WriteString(`Before starting, ask the user once, in one short line, which task this is (or none).
-If they pick one, run ` + "`tars link <id>`" + `. If they say none, carry on and don't ask again.
-If you can't ask (a non-interactive run), skip this.`)
+	fmt.Fprintf(&b, `Decide from the user's request, without asking them:
+- If it is work on one of these tasks, run `+"`%[1]s link <id> --thread \"…\"`"+` once, naming in a few words what this session does for that task. Don't mention it to the user.
+- If it's different work, a question, or you aren't sure, don't link. Don't mention %[1]s.
+Only ask the user (one short line) if the request is substantial work and clearly one of two of these tasks.`, self())
 	return b.String(), nil
 }
 
 // fileSession ties a captured session to a task; see store.FileCapture.
-func (a *app) fileSession(c *store.Capture, t *store.Task) error {
+func (a *app) fileSession(c *store.Capture, t *store.Task, via string) error {
 	s := claude.Inspect(claude.ConfigDir(), c.SessionID)
-	return a.st.FileCapture(c, t, s.Name, s.LaunchDir)
+	return a.st.FileCapture(c, t, s.Name, s.LaunchDir, via)
 }
 
 // settle records what a session changed: an unlinked session that did work
@@ -395,13 +426,16 @@ func firstLines(s string, max int) string {
 }
 
 func linkCmd(a *app) *cobra.Command {
-	return &cobra.Command{
+	var thread string
+	cmd := &cobra.Command{
 		Use:   "link <id>",
 		Short: "Link the Claude session running this command to a task",
-		Long: `Link the Claude Code session running this command to a task. tars asks
-Claude to run this when a session might belong to one of several tasks and
-the user picks one.`,
-		Args: cobra.ExactArgs(1),
+		Long: `Link the Claude Code session running this command to a task, and name what
+it's doing there with --thread. tars asks Claude to run this when it can tell
+from the request which task the session is for. Running it again on a linked
+session just renames the thread.`,
+		Example: `  tars link 26 --thread "Fix blank outlet array in v3 parser"`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
 			if err != nil {
@@ -425,14 +459,69 @@ the user picks one.`,
 			} else if err != nil {
 				return err
 			}
-			if err := a.fileSession(c, t); err != nil {
+			if err := a.fileSession(c, t, store.ViaClaude); err != nil {
 				return err
+			}
+			if thread != "" {
+				if err := a.st.SetThreadTitle(id, sid, thread); err != nil {
+					return err
+				}
 			}
 			return a.emit(map[string]any{"task_id": id, "session_id": sid}, func() string {
 				return ui.Success(fmt.Sprintf("Linked this session to #%d %s", id, t.Title)) + "\n"
 			})
 		},
 	}
+	cmd.Flags().StringVar(&thread, "thread", "", "what this session does for the task, in a few words")
+	return cmd
+}
+
+func unlinkCmd(a *app) *cobra.Command {
+	var task string
+	cmd := &cobra.Command{
+		Use:   "unlink [session]",
+		Short: "Take a session off a task it was linked to by mistake",
+		Long: `Take a Claude session off a task. A session that changed code goes back to
+unfiled, to be filed where it belongs; its reports stay on the task.
+Without a session ID it's the Claude session running the command.`,
+		Example: `  tars unlink 3666cd38
+  tars unlink 3666cd38 --task 26   # when the session is on more than one task`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			sid := claude.CurrentID()
+			if len(args) == 1 {
+				sid = args[0]
+			}
+			if sid == "" {
+				return fmt.Errorf("give the session to unlink, as shown in tars show or tars sessions")
+			}
+			sid, tasks, err := a.st.SessionTasks(sid)
+			if err != nil {
+				return err
+			}
+			var id int64
+			switch {
+			case task != "":
+				if id, err = parseID(task); err != nil {
+					return err
+				}
+			case len(tasks) == 1:
+				id = tasks[0]
+			case len(tasks) == 0:
+				return fmt.Errorf("session %s isn't on any task", shortID(sid))
+			default:
+				return fmt.Errorf("session %s is on %d tasks; say which with --task", shortID(sid), len(tasks))
+			}
+			if err := a.st.UnlinkSession(id, sid); err != nil {
+				return err
+			}
+			return a.emit(map[string]any{"task_id": id, "session_id": sid}, func() string {
+				return ui.Success(fmt.Sprintf("Took session %s off #%d. It's in tars unfiled if it changed code.", shortID(sid), id)) + "\n"
+			})
+		},
+	}
+	cmd.Flags().StringVar(&task, "task", "", "the task to take it off, when it's on several")
+	return cmd
 }
 
 func mustGetwd() string {
@@ -478,6 +567,61 @@ task. File each into a task (tars file <session> <id>), make it a new task
 			})
 		},
 	}
+}
+
+// recentCaptures lists the sessions tars captured in the last days days that
+// it kept: linked to a task or waiting in unfiled. Newest first.
+func (a *app) recentCaptures(days int) ([]*store.Capture, error) {
+	if _, err := a.unfiled(); err != nil { // settles sessions that went quiet
+		return nil, err
+	}
+	all, err := a.st.Captures(store.CaptureLinked, store.CaptureUnfiled)
+	if err != nil {
+		return nil, err
+	}
+	since := time.Now().AddDate(0, 0, -days)
+	out := []*store.Capture{}
+	for _, c := range all {
+		if at, err := time.Parse(time.RFC3339, c.StartedAt); err == nil && at.Before(since) {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+func capturedCmd(a *app) *cobra.Command {
+	var days int
+	cmd := &cobra.Command{
+		Use:   "captured",
+		Short: "Claude sessions captured lately, linked to a task or unfiled",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if days < 1 {
+				return fmt.Errorf("--days must be at least 1")
+			}
+			cs, err := a.recentCaptures(days)
+			if err != nil {
+				return err
+			}
+			return a.emit(cs, func() string {
+				if len(cs) == 0 {
+					return ui.Muted.Render("Nothing captured lately.") + "\n"
+				}
+				var b strings.Builder
+				for _, c := range cs {
+					where := "unfiled"
+					if c.State == store.CaptureLinked {
+						where = fmt.Sprintf("#%d", c.TaskID)
+					}
+					fmt.Fprintf(&b, "%s  %s  %s\n", ui.Accent.Render(shortID(c.SessionID)), ui.Bold.Render(c.Title()), ui.Muted.Render(where))
+				}
+				return b.String()
+			})
+		},
+	}
+	cmd.Flags().IntVar(&days, "days", 7, "how far back to look")
+	return cmd
 }
 
 func shortID(id string) string {
@@ -528,7 +672,7 @@ func fileCmd(a *app) *cobra.Command {
 			default:
 				return fmt.Errorf("give the task to file it into, or --new")
 			}
-			if err := a.fileSession(c, t); err != nil {
+			if err := a.fileSession(c, t, store.ViaUser); err != nil {
 				return err
 			}
 			if err := a.st.AddLog(t.ID, "user", "note", "Filed session "+shortID(c.SessionID)+": "+c.Title()); err != nil {

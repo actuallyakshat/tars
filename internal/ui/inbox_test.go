@@ -481,7 +481,7 @@ func TestNeedsYouViewAnswerAndResume(t *testing.T) {
 	st.CreateTask(asked)
 	st.CreateTask(quiet)
 	st.AddReport(&store.Report{TaskID: asked.ID, Done: "Backoff, 5 tries", NeedsYou: "Alert #oncall or #billing-alerts?"})
-	st.LinkSession(asked.ID, store.Session{ID: "sess-42", Name: "webhook retry"})
+	st.LinkSession(asked.ID, store.Session{ID: "sess-42", Name: "webhook retry"}, "agent")
 
 	m, err := newInbox(st)
 	if err != nil {

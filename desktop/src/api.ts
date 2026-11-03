@@ -24,6 +24,10 @@ export interface TaskSession {
   last_seen: string;
   first_at: string;
   last_at: string;
+  /** Why it's on the task: branch, worktree, pr, jira, claude, user or agent. */
+  via?: string;
+  /** What this session did for the task, as Claude named it. */
+  title?: string;
 }
 
 export interface Entry {
@@ -127,6 +131,63 @@ export interface RepoDetail extends Repo {
   sections?: Section[];
 }
 
+export interface TodoItem {
+  id: number;
+  list_id: number;
+  text: string;
+  done: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
+  done_at?: string;
+}
+
+/** A named checklist, with its items in order. */
+export interface TodoList {
+  id: number;
+  name: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+  items: TodoItem[];
+}
+
+/** One row of a usage breakdown (internal/usage). Costs are in USD. */
+export interface UsageLine {
+  key: string;
+  label?: string;
+  status?: string;
+  cost_usd: number;
+  cost: { input: number; output: number; cache_read: number; cache_write: number };
+  tokens: { input: number; output: number; cache_read: number; cache_write: number };
+  total_tokens: number;
+  cache_savings_usd: number;
+  calls: number;
+  unpriced_calls?: number;
+  sessions: number;
+}
+
+/** Live data's origin: fresh, cached (within its time to live), stale (fetch failed) or unavailable. */
+export type LiveStatus = "fresh" | "cached" | "stale" | "unavailable";
+
+export interface UsageSummary {
+  since: string;
+  until: string;
+  time_zone: string;
+  generated_at: string;
+  total: UsageLine;
+  daily: UsageLine[];
+  models: UsageLine[];
+  repos: UsageLine[];
+  tasks: UsageLine[];
+  unpriced_models: string[];
+  pricing: { source: string; fetched_at?: string; status: LiveStatus; models: number; error?: string };
+  /** Value of one USD in other currencies. Empty rates mean none could ever be fetched. */
+  fx: { base: "USD"; rates: Record<string, number>; date?: string; source?: string; fetched_at?: string; status: LiveStatus; error?: string };
+  files: number;
+  scan_ms: number;
+}
+
 export interface CliStatus {
   bin: string;
   version: string;
@@ -164,7 +225,7 @@ export const api = {
   seen: (id: number) => invoke("mark_seen", { id }),
   copy: (text: string) => invoke<void>("copy_text", { text }),
   openInTerminal: (sessionId: string, launchDir?: string) =>
-    invoke<void>("open_in_terminal", { sessionId, launchDir: launchDir || null }),
+    invoke<string>("open_in_terminal", { sessionId, launchDir: launchDir || null }),
   reveal: (path: string) => invoke<void>("reveal_path", { path }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   repos: () => invoke<Repo[]>("list_repos"),
@@ -178,10 +239,29 @@ export const api = {
   chooseFolder: () => invoke<string | null>("choose_folder"),
   zoom: (scale: number) => invoke<void>("set_zoom", { scale }),
   unfiled: () => invoke<Capture[]>("list_unfiled"),
+  /** Sessions captured in the last week, linked to a task or unfiled. */
+  captured: () => invoke<Capture[]>("list_captured"),
   /** Files a session into task `into`, or a new task (titled `title`) when into is null. */
   fileSession: (session: string, into: number | null, title = "") =>
     invoke<{ task_id: number }>("file_session", { session, into, title }),
+  /** Takes a session off a task; one that changed code goes back to Unfiled. */
+  unlink: (task: number, session: string) => invoke("unlink_session", { task, session }),
   dismiss: (session: string) => invoke("dismiss_session", { session }),
   merge: (from: number, into: number) => invoke("merge_tasks", { from, into }),
+  /** Usage over the last `days` days (0 for everything), or one task's over all time. */
+  usage: (days: number, task: number | null = null) => invoke<UsageSummary>("usage_summary", { days, task }),
+  todos: () => invoke<TodoList[]>("list_todos"),
+  todoNewList: (name: string) => invoke<TodoList>("todo_new_list", { name }),
+  todoRenameList: (id: number, name: string) => invoke<TodoList>("todo_rename_list", { id, name }),
+  /** Positions count from 1. */
+  todoMoveList: (id: number, position: number) => invoke<TodoList>("todo_move_list", { id, position }),
+  todoRemoveList: (id: number, force: boolean) => invoke("todo_remove_list", { id, force }),
+  todoAdd: (list: number, text: string) => invoke<TodoItem>("todo_add", { list, text }),
+  todoEdit: (id: number, text: string) => invoke<TodoItem>("todo_edit", { id, text }),
+  todoCheck: (id: number, done: boolean) => invoke<TodoItem[]>("todo_check", { id, done }),
+  /** Positions count from 1; list moves the item into another list. */
+  todoMove: (id: number, position: number, list: number | null = null) => invoke<TodoItem>("todo_move", { id, position, list }),
+  todoRemove: (id: number) => invoke("todo_remove", { id }),
+  todoClear: (list: number) => invoke<{ cleared: number }>("todo_clear", { list }),
   capture: (on: boolean | null = null, repo: string | null = null) => invoke<CaptureSettings>("capture_settings", { on, repo }),
 };

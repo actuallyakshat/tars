@@ -25,7 +25,7 @@ fn find_tars() -> Result<Tars> {
     let tars_bin = std::env::var("TARS_BIN").ok();
     let path = std::env::var("PATH").ok();
     let home = home();
-    let found = cli::candidates(tars_bin.as_deref(), path.as_deref(), home.as_deref(), |p| p.is_file());
+    let found = cli::candidates(cli::BIN_NAME, tars_bin.as_deref(), path.as_deref(), home.as_deref(), |p| p.is_file());
     let db = std::env::var_os("TARS_DB").filter(|d| !d.is_empty()).map(PathBuf::from);
     cli::detect(found, |t| t.db = db.clone())
 }
@@ -127,7 +127,7 @@ async fn copy_text(text: String) -> Result<()> {
 }
 
 #[tauri::command]
-async fn open_in_terminal(session_id: String, launch_dir: Option<String>) -> Result<()> {
+async fn open_in_terminal(session_id: String, launch_dir: Option<String>) -> Result<String> {
     blocking(move || mac::open_in_terminal(&session_id, launch_dir.as_deref())).await
 }
 
@@ -187,8 +187,18 @@ async fn list_unfiled(state: State<'_, AppState>) -> Result<Value> {
 }
 
 #[tauri::command]
+async fn list_captured(state: State<'_, AppState>) -> Result<Value> {
+    with_tars(state, |t| t.captured()).await
+}
+
+#[tauri::command]
 async fn file_session(state: State<'_, AppState>, session: String, into: Option<i64>, title: String) -> Result<Value> {
     with_tars(state, move |t| t.file_session(&session, into, &title)).await
+}
+
+#[tauri::command]
+async fn unlink_session(state: State<'_, AppState>, task: i64, session: String) -> Result<Value> {
+    with_tars(state, move |t| t.unlink(task, &session)).await
 }
 
 #[tauri::command]
@@ -204,6 +214,66 @@ async fn merge_tasks(state: State<'_, AppState>, from: i64, into: i64) -> Result
 #[tauri::command]
 async fn capture_settings(state: State<'_, AppState>, on: Option<bool>, repo: Option<String>) -> Result<Value> {
     with_tars(state, move |t| t.capture(on, repo.as_deref())).await
+}
+
+#[tauri::command]
+async fn usage_summary(state: State<'_, AppState>, days: u32, task: Option<i64>) -> Result<Value> {
+    with_tars(state, move |t| t.usage(days, task)).await
+}
+
+#[tauri::command]
+async fn list_todos(state: State<'_, AppState>) -> Result<Value> {
+    with_tars(state, |t| t.todos()).await
+}
+
+#[tauri::command]
+async fn todo_new_list(state: State<'_, AppState>, name: String) -> Result<Value> {
+    with_tars(state, move |t| t.todo_new_list(&name)).await
+}
+
+#[tauri::command]
+async fn todo_rename_list(state: State<'_, AppState>, id: i64, name: String) -> Result<Value> {
+    with_tars(state, move |t| t.todo_rename_list(id, &name)).await
+}
+
+#[tauri::command]
+async fn todo_move_list(state: State<'_, AppState>, id: i64, position: i64) -> Result<Value> {
+    with_tars(state, move |t| t.todo_move_list(id, position)).await
+}
+
+#[tauri::command]
+async fn todo_remove_list(state: State<'_, AppState>, id: i64, force: bool) -> Result<Value> {
+    with_tars(state, move |t| t.todo_remove_list(id, force)).await
+}
+
+#[tauri::command]
+async fn todo_add(state: State<'_, AppState>, list: i64, text: String) -> Result<Value> {
+    with_tars(state, move |t| t.todo_add(list, &text)).await
+}
+
+#[tauri::command]
+async fn todo_edit(state: State<'_, AppState>, id: i64, text: String) -> Result<Value> {
+    with_tars(state, move |t| t.todo_edit(id, &text)).await
+}
+
+#[tauri::command]
+async fn todo_check(state: State<'_, AppState>, id: i64, done: bool) -> Result<Value> {
+    with_tars(state, move |t| t.todo_check(id, done)).await
+}
+
+#[tauri::command]
+async fn todo_move(state: State<'_, AppState>, id: i64, position: i64, list: Option<i64>) -> Result<Value> {
+    with_tars(state, move |t| t.todo_move(id, position, list)).await
+}
+
+#[tauri::command]
+async fn todo_remove(state: State<'_, AppState>, id: i64) -> Result<Value> {
+    with_tars(state, move |t| t.todo_remove(id)).await
+}
+
+#[tauri::command]
+async fn todo_clear(state: State<'_, AppState>, list: i64) -> Result<Value> {
+    with_tars(state, move |t| t.todo_clear(list)).await
 }
 
 #[tauri::command]
@@ -248,10 +318,24 @@ pub fn run() {
             choose_folder,
             set_zoom,
             list_unfiled,
+            list_captured,
             file_session,
             dismiss_session,
+            unlink_session,
             merge_tasks,
             capture_settings,
+            usage_summary,
+            list_todos,
+            todo_new_list,
+            todo_rename_list,
+            todo_move_list,
+            todo_remove_list,
+            todo_add,
+            todo_edit,
+            todo_check,
+            todo_move,
+            todo_remove,
+            todo_clear,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tars");

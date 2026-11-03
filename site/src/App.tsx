@@ -11,8 +11,8 @@ const OWNER = REPO.split("/")[0];
 
 // The hero's load-in: one short staggered sequence, then the capture diagram plays.
 const heroItem = {
-  hidden: { opacity: 0, y: 10 },
-  shown: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.2, 0.7, 0.2, 1] } },
+  hidden: { opacity: 0, y: 12, filter: "blur(4px)" },
+  shown: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.7, ease: [0.2, 0.7, 0.2, 1] } },
 } as const;
 
 export function App() {
@@ -40,6 +40,15 @@ export function App() {
           transition={{ staggerChildren: 0.08 }}
         >
           <div className="hero-copy">
+            <motion.div variants={heroItem}>
+              <motion.div
+                className="hero-mark"
+                whileHover={{ rotate: -8, scale: 1.04 }}
+                transition={{ type: "spring", stiffness: 300, damping: 14 }}
+              >
+                <Mark size={64} />
+              </motion.div>
+            </motion.div>
             <motion.h1 variants={heroItem}>Every Claude Code session, recorded and sorted</motion.h1>
             <motion.p className="lede" variants={heroItem}>
               Install the plugin and Tars records each session you run in a git repo as it happens, and links it to
@@ -53,6 +62,7 @@ export function App() {
               </motion.a>
               <motion.a className="btn btn-quiet" href="#how" {...press}>
                 How capture works
+                <ChevronDownIcon />
               </motion.a>
             </motion.div>
           </div>
@@ -200,6 +210,14 @@ function PromptIcon() {
     <svg className="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M3 4.5 6.5 8 3 11.5" />
       <path d="M8.5 11.5H13" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg className="btn-icon btn-icon-down" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 6.5 8 10.5 12 6.5" />
     </svg>
   );
 }

@@ -16,9 +16,18 @@ type Store struct {
 }
 
 // DefaultPath honours $TARS_HOME, then $XDG_DATA_HOME, then ~/.local/share.
-func DefaultPath() (string, error) {
-	if dir := os.Getenv("TARS_HOME"); dir != "" {
-		return filepath.Join(dir, "tars.db"), nil
+func DefaultPath() (string, error) { return DefaultPathFor(false) }
+
+// DefaultPathFor is DefaultPath, or for dev builds (tars-dev) a database of
+// their own: $TARS_DEV_HOME, else tars-dev next to the real data folder.
+// A dev build never reads $TARS_HOME, so it can't end up on the real data.
+func DefaultPathFor(dev bool) (string, error) {
+	env, dir := "TARS_HOME", "tars"
+	if dev {
+		env, dir = "TARS_DEV_HOME", "tars-dev"
+	}
+	if d := os.Getenv(env); d != "" {
+		return filepath.Join(d, "tars.db"), nil
 	}
 	base := os.Getenv("XDG_DATA_HOME")
 	if base == "" {
@@ -28,7 +37,33 @@ func DefaultPath() (string, error) {
 		}
 		base = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(base, "tars", "tars.db"), nil
+	return filepath.Join(base, dir, "tars.db"), nil
+}
+
+// CopyDatabase writes a consistent copy of the database at src to dst,
+// replacing dst. src is opened read-only and never migrated, so copying the
+// real database into a dev one leaves the real one exactly as it was.
+func CopyDatabase(src, dst string) error {
+	if _, err := os.Stat(src); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	tmp := dst + ".copying"
+	os.Remove(tmp)
+	db, err := sql.Open("sqlite", "file:"+src+"?mode=ro&_pragma=busy_timeout(5000)")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if _, err := db.Exec(`VACUUM INTO ?`, tmp); err != nil {
+		return fmt.Errorf("copy %s: %w", src, err)
+	}
+	for _, ext := range []string{"-wal", "-shm"} {
+		os.Remove(dst + ext)
+	}
+	return os.Rename(tmp, dst)
 }
 
 func Open(path string) (*Store, error) {
@@ -176,6 +211,34 @@ var migrations = []migration{
 		sql:     `ALTER TABLE repos ADD COLUMN capture INTEGER NOT NULL DEFAULT 1;`,
 		applied: func(tx *sql.Tx) (bool, error) { return hasColumn(tx, "repos", "capture") },
 	},
+	// Why a session is on a task (matched by branch, chosen by Claude, filed
+	// by the user, used by an agent) and what it did there, named by Claude.
+	{
+		sql: `ALTER TABLE task_sessions ADD COLUMN via TEXT NOT NULL DEFAULT '';
+	ALTER TABLE task_sessions ADD COLUMN title TEXT NOT NULL DEFAULT '';`,
+		applied: func(tx *sql.Tx) (bool, error) { return hasColumn(tx, "task_sessions", "via") },
+	},
+	// Named todo lists, separate from tasks: plain checklists the user orders.
+	// Positions run 0..n-1 within their parent and are renumbered on every
+	// change, so they're never unique-constrained (renumbering would collide).
+	{sql: `CREATE TABLE IF NOT EXISTS todo_lists (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		name        TEXT NOT NULL COLLATE NOCASE UNIQUE,
+		position    INTEGER NOT NULL DEFAULT 0,
+		created_at  TEXT NOT NULL,
+		updated_at  TEXT NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS todo_items (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		list_id     INTEGER NOT NULL REFERENCES todo_lists(id) ON DELETE CASCADE,
+		text        TEXT NOT NULL,
+		done        INTEGER NOT NULL DEFAULT 0,
+		position    INTEGER NOT NULL DEFAULT 0,
+		created_at  TEXT NOT NULL,
+		updated_at  TEXT NOT NULL,
+		done_at     TEXT NOT NULL DEFAULT ''
+	);
+	CREATE INDEX IF NOT EXISTS todo_items_list ON todo_items(list_id, position);`},
 }
 
 // migrate runs pending migrations. Transactions are IMMEDIATE (see the DSN), so

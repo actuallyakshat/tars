@@ -27,8 +27,12 @@ import { THEME_KEY, THEMES, applyTheme, storedTheme, type ThemePref } from "./th
 import { ReposPage } from "./components/ReposPage";
 import { TaskPicker } from "./components/TaskPicker";
 import { UnfiledPage, captureTitle } from "./components/UnfiledPage";
+import { TodoPage } from "./components/TodoPage";
+import { UsagePage } from "./components/UsagePage";
 import type { PageName } from "./components/Sidebar";
 import { CommandPalette, type Command } from "./components/CommandPalette";
+import { Bell } from "./components/Bell";
+import { LAUNCH, bellLit, isNew, loadFresh, markOpened, markSeen, prune, saveFresh, seed, type Fresh } from "./fresh";
 import { PanesContext } from "./components/Panes";
 
 export const REFRESH_MS = 4000;
@@ -48,8 +52,11 @@ const DETAIL_DEFAULT = 460;
 const LIST_MIN = 360;
 // The sidebar resizes too, but only so far: past this it is wasted space.
 export const SIDEBAR_MIN = 180;
-export const SIDEBAR_MAX = 320;
-const SIDEBAR_DEFAULT = 208;
+export const SIDEBAR_MAX = 360;
+const SIDEBAR_DEFAULT = 240;
+// The app saves the width on every launch, so installs from before the wider
+// default all hold the old one. Read it as unset; a width someone chose stays.
+const OLD_SIDEBAR_DEFAULT = 208;
 const clampSidebar = (w: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, w));
 
 const stored = (k: string, fallback: boolean) => {
@@ -82,7 +89,11 @@ export function App() {
   const [detailOpen, setDetailOpen] = useState(() => stored(DETAIL_KEY, true));
   const [detailWidth, setDetailWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || DETAIL_DEFAULT);
   const [sidebarWidth, setSidebarWidth] = useState(() =>
-    clampSidebar(Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT),
+    clampSidebar(
+      Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) === OLD_SIDEBAR_DEFAULT
+        ? SIDEBAR_DEFAULT
+        : Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT,
+    ),
   );
   // The selected task's details fill the window: no sidebar, no list.
   const [fullDetail, setFullDetail] = useState(false);
@@ -102,6 +113,9 @@ export function App() {
   const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
   const [unfiled, setUnfiled] = useState<Capture[]>([]);
   const [captureOn, setCaptureOn] = useState<boolean | null>(null);
+  // Sessions captured lately, and which of them are still new.
+  const [captured, setCaptured] = useState<Capture[]>([]);
+  const [fresh, setFresh] = useState<Fresh | null>(loadFresh);
   // Choosing a task: to file a captured session into, or to merge a task into.
   const [picking, setPicking] = useState<{ file: Capture } | { merge: Task } | null>(null);
 
@@ -123,6 +137,14 @@ export function App() {
     else setFlash({ text: err.message, error: true });
   }, []);
 
+  const loadCaptured = useCallback(() => {
+    api.captured().then((list) => {
+      setCaptured(list);
+      // The first run treats everything already captured as old news.
+      setFresh((f) => prune(f ?? seed(list, Date.now()), list));
+    }, () => {});
+  }, []);
+
   // One refresh at a time; a request during one runs once it finishes.
   const busy = useRef(false);
   const again = useRef(false);
@@ -136,6 +158,7 @@ export function App() {
       const list = await api.list();
       setTasks(list);
       api.unfiled().then(setUnfiled, () => {});
+      loadCaptured();
       setNow(new Date());
       const id = selRef.current;
       if (id !== null && list.some((t) => t.id === id)) {
@@ -153,7 +176,7 @@ export function App() {
         void refresh();
       }
     }
-  }, [fail]);
+  }, [fail, loadCaptured]);
 
   // quiet: an automatic retry, which keeps the current error on screen
   // instead of flashing "Loading…".
@@ -189,6 +212,7 @@ export function App() {
     setLoaded(true);
     api.repos().then(setProfiles, () => {});
     api.unfiled().then(setUnfiled, () => {});
+    loadCaptured();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -250,6 +274,50 @@ export function App() {
       setDetail((d) => (d && d.id === id ? { ...d, unread: false } : d));
     }, fail);
   }, [seenId, fail]);
+
+  useEffect(() => {
+    if (fresh) saveFresh(fresh);
+  }, [fresh]);
+
+  const nowMs = now.getTime();
+  const newIds = useMemo(
+    () => new Set(fresh ? captured.filter((c) => isNew(c, fresh, nowMs, LAUNCH)).map((c) => c.session_id) : []),
+    [captured, fresh, nowMs],
+  );
+  const freshTasks = useMemo(
+    () => new Set(captured.filter((c) => c.state === "linked" && c.task_id && newIds.has(c.session_id)).map((c) => c.task_id!)),
+    [captured, newIds],
+  );
+  // A session linked to a task that's since been deleted has nowhere to go.
+  const bellCaptured = useMemo(() => {
+    const ids = new Set(tasks.map((t) => t.id));
+    return captured.filter((c) => c.state !== "linked" || (c.task_id && ids.has(c.task_id)));
+  }, [captured, tasks]);
+  const openSessions = (ids: string[]) => setFresh((f) => (f ? markOpened(f, ids) : f));
+
+  // Seen in the main pane: a task row on screen, or a card on Unfiled. A new
+  // session stays new for a while after that, or until the next launch.
+  const seenIds = useMemo(() => {
+    if (page === "list") {
+      const shownIds = new Set(visible.map((t) => t.id));
+      return captured.filter((c) => c.state === "linked" && c.task_id && shownIds.has(c.task_id)).map((c) => c.session_id);
+    }
+    if (page === "unfiled") return unfiled.map((c) => c.session_id);
+    return [];
+  }, [page, visible, captured, unfiled]);
+  useEffect(() => {
+    if (seenIds.length) setFresh((f) => (f ? markSeen(f, seenIds, Date.now(), LAUNCH) : f));
+  }, [seenIds]);
+
+  // Opening a task opens the sessions captured into it.
+  const openedTask = detail && detail.id === selectedId && taskShowing ? detail.id : null;
+  const openedIds = useMemo(
+    () => captured.filter((c) => c.task_id === openedTask && newIds.has(c.session_id)).map((c) => c.session_id),
+    [captured, openedTask, newIds],
+  );
+  useEffect(() => {
+    if (openedIds.length) setFresh((f) => (f ? markOpened(f, openedIds) : f));
+  }, [openedIds]);
 
   // Agents add repos and preferences while the app is open; show the latest.
   useEffect(() => {
@@ -417,6 +485,7 @@ export function App() {
   };
 
   const fileInto = async (c: Capture, id: number) => {
+    openSessions([c.session_id]);
     const t = tasks.find((x) => x.id === id);
     const ok = await act(() => api.fileSession(c.session_id, id), `Filed “${captureTitle(c)}” into #${id}${t ? " " + t.title : ""}`);
     if (ok) setPicking(null);
@@ -424,6 +493,7 @@ export function App() {
   };
 
   const fileAsNew = async (c: Capture, title: string) => {
+    openSessions([c.session_id]);
     let id: number;
     try {
       id = (await api.fileSession(c.session_id, null, title)).task_id;
@@ -436,7 +506,10 @@ export function App() {
     return true;
   };
 
-  const dismiss = (c: Capture) => act(() => api.dismiss(c.session_id), `Dismissed “${captureTitle(c)}”`);
+  const dismiss = (c: Capture) => {
+    openSessions([c.session_id]);
+    return act(() => api.dismiss(c.session_id), `Dismissed “${captureTitle(c)}”`);
+  };
 
   const merge = async (from: Task, into: number) => {
     const ok = await act(() => api.merge(from.id, into), `Merged #${from.id} into #${into}. Its sessions, reports and notes moved over.`);
@@ -542,7 +615,7 @@ export function App() {
   };
 
   const openTerminal = (s: TaskSession) =>
-    api.openInTerminal(s.id, s.launch_dir).then(() => say("Opened in Terminal"), fail);
+    api.openInTerminal(s.id, s.launch_dir).then((msg) => say(msg || "Opened in Terminal"), fail);
 
   const startAnswer = () => {
     if (!shown) return;
@@ -763,6 +836,8 @@ export function App() {
     { id: "sidebar", label: sidebarOpen ? "Hide sidebar" : "Show sidebar", keys: "⌘B", run: toggleSidebar },
     { id: "preview", label: detailOpen ? "Hide preview" : "Show preview", keys: "⌘⇧B", run: toggleDetail },
     { id: "unfiled", label: `Unfiled sessions (${unfiled.length})`, run: () => setPage("unfiled") },
+    { id: "todos", label: "Todo lists", run: () => setPage("todos") },
+    { id: "usage", label: "Usage and cost", run: () => setPage("usage") },
     { id: "repos", label: "Repos and preferences", run: () => setPage("repos") },
     { id: "settings", label: "Settings", keys: "⌘,", run: () => setPage("settings") },
     {
@@ -808,6 +883,21 @@ export function App() {
           page={page}
           onView={changeView}
           onPage={(p) => setPage(p)}
+          bell={
+            <Bell
+              captured={bellCaptured}
+              lit={fresh ? bellLit(bellCaptured, fresh) : false}
+              isNew={(c) => newIds.has(c.session_id)}
+              taskTitle={(id) => tasks.find((t) => t.id === id)?.title}
+              now={now}
+              onOpen={() => setFresh((f) => (f ? { ...f, bellAt: Date.now() } : f))}
+              onPick={(c) => {
+                openSessions([c.session_id]);
+                if (c.state === "linked" && c.task_id) goToTask(c.task_id);
+                else setPage("unfiled");
+              }}
+            />
+          }
         />
         <Resizer
           label="Resize sidebar"
@@ -865,6 +955,8 @@ export function App() {
         />
       )}
       {page === "legend" && <LegendPage onBack={() => setPage("list")} />}
+      {page === "todos" && <TodoPage onError={fail} onBack={() => setPage("list")} />}
+      {page === "usage" && <UsagePage onBack={() => setPage("list")} onOpenTask={goToTask} />}
       {page === "unfiled" && (
         <UnfiledPage
           sessions={unfiled}
@@ -873,7 +965,11 @@ export function App() {
           onFileInto={(c) => setPicking({ file: c })}
           onNewTask={fileAsNew}
           onDismiss={(c) => void dismiss(c)}
-          onResume={(c) => void api.openInTerminal(c.session_id, c.worktree).then(() => say("Opened in Terminal"), fail)}
+          isNew={(c) => newIds.has(c.session_id)}
+          onResume={(c) => {
+            openSessions([c.session_id]);
+            void api.openInTerminal(c.session_id, c.worktree).then((msg) => say(msg || "Opened in Terminal"), fail);
+          }}
           onSettings={() => setPage("settings")}
           onBack={() => setPage("list")}
         />
@@ -904,6 +1000,7 @@ export function App() {
           }}
           onMenu={openMenu}
           onOpenUrl={(url) => void api.openUrl(url).catch(fail)}
+          fresh={freshTasks}
         />
       )}
       {showDetail && (
@@ -942,6 +1039,11 @@ export function App() {
             onCopy={(text, what) => void copy(text, what)}
             onReveal={(p) => void api.reveal(p).catch(fail)}
             onTerminal={(s) => void openTerminal(s)}
+            onUnlink={(s) => {
+              if (!shown) return;
+              const id = shown.id;
+              void act(() => api.unlink(id, s.id), `Took “${s.name || s.id.slice(0, 8)}” off #${id}. If it changed code, it's in Unfiled.`);
+            }}
             setAnswering={setAnswering}
             setNoting={setNoting}
             setLogOpen={setLogOpen}

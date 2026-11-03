@@ -26,6 +26,7 @@ export function UnfiledPage({
   onResume,
   onSettings,
   onBack,
+  isNew = () => false,
 }: {
   sessions: Capture[];
   captureOn: boolean | null;
@@ -36,6 +37,8 @@ export function UnfiledPage({
   onResume: (c: Capture) => void;
   onSettings: () => void;
   onBack: () => void;
+  /** Newly captured, not yet opened. */
+  isNew?: (c: Capture) => boolean;
 }) {
   return (
     <Page title="Unfiled" onBack={onBack}>
@@ -65,6 +68,7 @@ export function UnfiledPage({
               key={c.session_id}
               c={c}
               now={now}
+              isNew={isNew(c)}
               onFileInto={() => onFileInto(c)}
               onNewTask={(title) => onNewTask(c, title)}
               onDismiss={() => onDismiss(c)}
@@ -80,6 +84,7 @@ export function UnfiledPage({
 function SessionCard({
   c,
   now,
+  isNew,
   onFileInto,
   onNewTask,
   onDismiss,
@@ -87,6 +92,7 @@ function SessionCard({
 }: {
   c: Capture;
   now: Date;
+  isNew: boolean;
   onFileInto: () => void;
   onNewTask: (title: string) => Promise<boolean>;
   onDismiss: () => void;
@@ -115,7 +121,10 @@ function SessionCard({
         {c.branch && <span className="mono">{c.branch}</span>}
         <span>{ago(c.ended_at || c.started_at, now)}</span>
       </div>
-      <h2 className="unfiled-title">{title}</h2>
+      <h2 className="unfiled-title">
+        {title}
+        {isNew && <span className="new-badge">New</span>}
+      </h2>
       {showPrompt && <p className="unfiled-prompt">{prompt}</p>}
       <p className="unfiled-work">
         <span>

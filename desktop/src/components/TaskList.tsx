@@ -18,6 +18,8 @@ interface Props {
   onOpen: (id: number) => void;
   onMenu: (id: number, x: number, y: number) => void;
   onOpenUrl: (url: string) => void;
+  /** Tasks with a newly captured session. */
+  fresh?: Set<number>;
 }
 
 function emptyMessage(view: number, query: string) {
@@ -27,7 +29,7 @@ function emptyMessage(view: number, query: string) {
   return "Nothing here.";
 }
 
-export function TaskList({ groups, view, selectedId, now, query, group, sort, onQuery, onGroup, onSort, onSelect, onOpen, onMenu, onOpenUrl }: Props) {
+export function TaskList({ groups, view, selectedId, now, query, group, sort, onQuery, onGroup, onSort, onSelect, onOpen, onMenu, onOpenUrl, fresh }: Props) {
   const selRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
     selRef.current?.scrollIntoView?.({ block: "nearest" });
@@ -66,6 +68,7 @@ export function TaskList({ groups, view, selectedId, now, query, group, sort, on
                     onOpen={onOpen}
                     onMenu={onMenu}
                     onOpenUrl={onOpenUrl}
+                    isNew={fresh?.has(t.id) ?? false}
                   />
                 ))}
               </ul>
@@ -86,9 +89,10 @@ interface RowProps {
   onOpen: (id: number) => void;
   onMenu: (id: number, x: number, y: number) => void;
   onOpenUrl: (url: string) => void;
+  isNew: boolean;
 }
 
-function Row({ t, now, selected, ref, onSelect, onOpen, onMenu, onOpenUrl }: RowProps) {
+function Row({ t, now, selected, ref, onSelect, onOpen, onMenu, onOpenUrl, isNew }: RowProps) {
   const due = t.status === "done" ? { text: ago(t.done_at, now), tone: "muted" } : dueText(t.due, now);
   const cls = ["row", `p${t.priority}`, `s-${t.status}`];
   if (selected) cls.push("sel");
@@ -127,6 +131,7 @@ function Row({ t, now, selected, ref, onSelect, onOpen, onMenu, onOpenUrl }: Row
       <span className="c-id">#{t.id}</span>
       <span className="c-title">
         <span className="title-text">{t.title}</span>
+        {isNew && <span className="new-badge" title="A Claude session was just captured into this task">New</span>}
         {t.status === "blocked" && t.waiting_on && <span className="waiting">waiting on {t.waiting_on}</span>}
         {t.pr && (
           <button

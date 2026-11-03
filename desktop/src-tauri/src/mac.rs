@@ -49,6 +49,14 @@ impl TerminalApp {
         }
     }
 
+    fn name(self) -> &'static str {
+        match self {
+            TerminalApp::Terminal => "Terminal",
+            TerminalApp::Iterm => "iTerm2",
+            TerminalApp::Ghostty => "Ghostty",
+        }
+    }
+
     fn from_term_program(v: &str) -> Option<Self> {
         match v {
             "Apple_Terminal" => Some(TerminalApp::Terminal),
@@ -97,6 +105,43 @@ pub fn terminal_script(app: TerminalApp, id: &str, dir: Option<&str>) -> Result<
     })
 }
 
+/// The command a resumed session runs, from its folder when there is one.
+fn resume_line(id: &str, dir: Option<&str>) -> Result<String> {
+    let cmd = resume_command(id)?;
+    Ok(match launch_dir(dir) {
+        Some(dir) => format!("cd {} && {cmd}", shell_quote(dir)),
+        None => cmd,
+    })
+}
+
+/// What tab_script printed: a tab opened, or the app had no window to add
+/// one to (or wasn't running), so a new window is the way.
+pub const TAB_OPENED: &str = "tab";
+pub const NO_WINDOW: &str = "no-window";
+
+/// AppleScript that opens the resume command in a new tab of the terminal's
+/// front window. iTerm2 does it natively. Ghostty (no AppleScript as of 1.2)
+/// and Terminal.app go through their menus with System Events, which needs
+/// Accessibility permission; without it the script fails and the caller
+/// falls back to a new window. The menu is clicked rather than ⌘T pressed:
+/// if the item isn't there the script stops, instead of typing the command
+/// into whatever tab has focus.
+pub fn tab_script(app: TerminalApp, id: &str, dir: Option<&str>) -> Result<String> {
+    let line = applescript_string(&resume_line(id, dir)?);
+    let (process, new_tab) = match app {
+        TerminalApp::Iterm => {
+            return Ok(format!(
+                "tell application \"iTerm\"\n  if (count of windows) = 0 then return \"{NO_WINDOW}\"\n  activate\n  tell current window\n    set t to (create tab with default profile)\n    tell current session of t to write text {line}\n  end tell\nend tell\nreturn \"{TAB_OPENED}\""
+            ))
+        }
+        TerminalApp::Ghostty => ("Ghostty", "click menu item \"New Tab\" of menu \"File\" of menu bar 1"),
+        TerminalApp::Terminal => ("Terminal", "click menu item 1 of menu 1 of menu item \"New Tab\" of menu \"Shell\" of menu bar 1"),
+    };
+    Ok(format!(
+        "tell application \"System Events\"\n  if not (exists process \"{process}\") then return \"{NO_WINDOW}\"\n  if (count of windows of process \"{process}\") = 0 then return \"{NO_WINDOW}\"\nend tell\ntell application \"{process}\" to activate\ntell application \"System Events\"\n  tell process \"{process}\"\n    set frontmost to true\n    {new_tab}\n  end tell\n  delay 0.4\n  keystroke {line}\n  key code 36\nend tell\nreturn \"{TAB_OPENED}\""
+    ))
+}
+
 /// Arguments for `open` that start a Ghostty window in the session's folder
 /// and type the resume command into its shell, so the window outlives claude.
 /// Ghostty 1.2 has no AppleScript; `input` arrived in 1.2.0.
@@ -110,16 +155,32 @@ pub fn ghostty_args(id: &str, dir: Option<&str>) -> Result<Vec<String>> {
     Ok(args)
 }
 
-pub fn open_in_terminal(id: &str, launch_dir: Option<&str>) -> Result<()> {
+/// Opens the session in a new tab of the terminal's front window, or a new
+/// window when there's no window or tabs can't be scripted. Returns what
+/// happened, for the app to show.
+pub fn open_in_terminal(id: &str, launch_dir: Option<&str>) -> Result<String> {
     let term_program = std::env::var("TERM_PROGRAM").ok();
-    match pick_terminal(term_program.as_deref(), is_installed) {
-        TerminalApp::Ghostty => run(Command::new("open").args(ghostty_args(id, launch_dir)?), "open Ghostty"),
-        app => {
-            let script = terminal_script(app, id, launch_dir)?;
-            let what = if app == TerminalApp::Iterm { "open iTerm2" } else { "open Terminal" };
-            run(Command::new("osascript").arg("-e").arg(script), what)
+    let app = pick_terminal(term_program.as_deref(), is_installed);
+    let name = app.name();
+    let tab = Command::new("osascript").arg("-e").arg(tab_script(app, id, launch_dir)?).stdin(Stdio::null()).output();
+    let blocked = match &tab {
+        Ok(out) if out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == TAB_OPENED => {
+            return Ok(format!("Opened in a new {name} tab"));
         }
+        Ok(out) if out.status.success() => false, // no window to add a tab to
+        _ => true,
+    };
+    match app {
+        TerminalApp::Ghostty => run(Command::new("open").args(ghostty_args(id, launch_dir)?), "open Ghostty")?,
+        _ => run(Command::new("osascript").arg("-e").arg(terminal_script(app, id, launch_dir)?), &format!("open {name}"))?,
     }
+    Ok(if blocked && app != TerminalApp::Iterm {
+        format!(
+            "Opened in a new {name} window. To open tabs instead, allow Tars in System Settings → Privacy & Security → Accessibility."
+        )
+    } else {
+        format!("Opened in a new {name} window")
+    })
 }
 
 pub fn copy_text(text: &str) -> Result<()> {
@@ -239,6 +300,22 @@ mod tests {
         assert!(s.starts_with("tell application \"iTerm\""));
         assert!(s.contains("create window with default profile"));
         assert!(s.contains("write text \"cd '/work/billing' && claude --resume sess-42\""));
+    }
+
+    #[test]
+    fn tabs_click_the_menu_then_type_the_command() {
+        let s = tab_script(TerminalApp::Ghostty, "sess-42", Some("/work/it's")).unwrap();
+        assert!(s.contains("if (count of windows of process \"Ghostty\") = 0 then return \"no-window\""));
+        assert!(s.contains("click menu item \"New Tab\" of menu \"File\" of menu bar 1"));
+        assert!(s.contains("keystroke \"cd '/work/it'\\\\''s' && claude --resume sess-42\""));
+        // The menu click comes before any typing, so a missing item stops the script first.
+        assert!(s.find("click menu item").unwrap() < s.find("keystroke").unwrap());
+        let s = tab_script(TerminalApp::Terminal, "sess-42", None).unwrap();
+        assert!(s.contains("of menu item \"New Tab\" of menu \"Shell\""));
+        assert!(s.contains("keystroke \"claude --resume sess-42\""));
+        let s = tab_script(TerminalApp::Iterm, "sess-42", None).unwrap();
+        assert!(s.contains("create tab with default profile") && !s.contains("System Events"));
+        assert!(tab_script(TerminalApp::Ghostty, "$(id)", None).is_err());
     }
 
     #[test]

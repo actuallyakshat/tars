@@ -1,7 +1,8 @@
+import type { ReactNode } from "react";
 import { Mark } from "../Mark";
 import { VIEWS, DONE } from "../model";
 
-export type PageName = "list" | "new" | "edit" | "repos" | "settings" | "legend" | "unfiled";
+export type PageName = "list" | "new" | "edit" | "repos" | "settings" | "legend" | "unfiled" | "todos" | "usage";
 
 interface Props {
   counts: { total: number; unread: number }[];
@@ -11,15 +12,18 @@ interface Props {
   page: PageName;
   onView: (i: number) => void;
   onPage: (p: PageName) => void;
+  /** The notification bell, beside the name. */
+  bell?: ReactNode;
 }
 
-export function Sidebar({ counts, unfiled, view, page, onView, onPage }: Props) {
+export function Sidebar({ counts, unfiled, view, page, onView, onPage, bell }: Props) {
   return (
     <nav className="sidebar" aria-label="Views">
       <div className="drag sidebar-top" data-tauri-drag-region />
       <div className="brand">
         <Mark size={20} />
         <span>Tars</span>
+        {bell && <span className="brand-bell">{bell}</span>}
       </div>
       <button
         className={"new-task-button" + (page === "new" ? " on" : "")}
@@ -74,6 +78,35 @@ export function Sidebar({ counts, unfiled, view, page, onView, onPage }: Props) 
         </li>
       </ul>
       <div className="sidebar-foot">
+        <button
+          className={"foot-link" + (page === "todos" ? " on" : "")}
+          aria-current={page === "todos" ? "page" : undefined}
+          onClick={() => onPage("todos")}
+          title="Named checklists, separate from tasks"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path
+              d="M2 3.5l1 1 1.8-2M2 8l1 1 1.8-2M6.8 3.6h5.2M6.8 8.1h5.2M6.8 11.6h5.2M2.6 11.6h.1"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Todo lists
+        </button>
+        <button
+          className={"foot-link" + (page === "usage" ? " on" : "")}
+          aria-current={page === "usage" ? "page" : undefined}
+          onClick={() => onPage("usage")}
+          title="What your Claude sessions cost"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path d="M2 12h10M3.6 12V8.4M7 12V4.2M10.4 12V6.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          Usage
+        </button>
         <button
           className={"foot-link" + (page === "repos" ? " on" : "")}
           aria-current={page === "repos" ? "page" : undefined}

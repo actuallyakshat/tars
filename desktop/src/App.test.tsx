@@ -155,6 +155,7 @@ describe("detail pane", () => {
     expect(b.callsTo("copy_text")).toEqual([{ text: "claude --resume sess-42" }]);
     await user.click(d.getByRole("button", { name: "Resume in Terminal" }));
     expect(b.callsTo("open_in_terminal")).toEqual([{ sessionId: "sess-42", launchDir: "/work/billing" }]);
+    expect(await screen.findByText("Opened in a new Ghostty tab")).toBeInTheDocument();
 
     await user.click(d.getByRole("button", { name: "tars/1-webhook-retry" }));
     expect(b.callsTo("copy_text")[1]).toEqual({ text: "tars/1-webhook-retry" });
@@ -420,7 +421,7 @@ describe("layout", () => {
       // In a narrow window the preview gives way so the list keeps its minimum width.
       Object.defineProperty(window, "innerWidth", { configurable: true, value: 1000 });
       act(() => void window.dispatchEvent(new Event("resize")));
-      expect(Number(screen.getByRole("separator", { name: "Resize preview" }).getAttribute("aria-valuenow"))).toBe(1000 - 208 - 360);
+      expect(Number(screen.getByRole("separator", { name: "Resize preview" }).getAttribute("aria-valuenow"))).toBe(1000 - 240 - 360);
     } finally {
       Object.defineProperty(window, "innerWidth", { configurable: true, value: original });
     }
@@ -448,19 +449,30 @@ describe("layout", () => {
     expect(screen.getByTestId("row-1")).toBeInTheDocument();
   });
 
+  it("moves installs still on the old sidebar width to the new default, keeping a chosen width", async () => {
+    localStorage.setItem("tars.sidebarWidth", "208");
+    fakeBackend();
+    const { unmount } = render(<App />);
+    expect(Number((await screen.findByRole("separator", { name: "Resize sidebar" })).getAttribute("aria-valuenow"))).toBe(240);
+    unmount();
+    localStorage.setItem("tars.sidebarWidth", "280");
+    render(<App />);
+    expect(Number((await screen.findByRole("separator", { name: "Resize sidebar" })).getAttribute("aria-valuenow"))).toBe(280);
+  });
+
   it("resizes the sidebar within its limits and remembers the width", async () => {
     fakeBackend();
     const user = await boot();
     const handle = await screen.findByRole("separator", { name: "Resize sidebar" });
-    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(208);
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(240);
     handle.focus();
     await user.keyboard("{ArrowRight}{ArrowRight}");
-    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(256);
-    expect(localStorage.getItem("tars.sidebarWidth")).toBe("256");
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(288);
+    expect(localStorage.getItem("tars.sidebarWidth")).toBe("288");
 
     // It never widens past its maximum, nor narrows past its minimum.
     await user.keyboard("{ArrowRight}".repeat(10));
-    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(320);
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(360);
     await user.keyboard("{ArrowLeft}".repeat(20));
     expect(Number(handle.getAttribute("aria-valuenow"))).toBe(180);
   });
@@ -978,6 +990,66 @@ describe("unfiled sessions", () => {
   });
 });
 
+describe("captured sessions bell", () => {
+  // A stored state means this isn't the first run, so captures count as new.
+  const notFirstRun = () => localStorage.setItem("tars.fresh", JSON.stringify({ marks: {}, bellAt: 0 }));
+  const bell = () => sidebar().getByRole("button", { name: /^Captured sessions/ });
+
+  it("lights a red dot for new captures, which opening the bell clears", async () => {
+    fakeBackend();
+    notFirstRun();
+    const user = await boot();
+    await waitFor(() => expect(screen.getByTestId("bell-dot")).toBeInTheDocument());
+    await user.click(bell());
+    const panel = within(screen.getByRole("dialog", { name: "Recently captured" }));
+    const unfiled = panel.getByRole("button", { name: /Stream CSV exports/ });
+    expect(unfiled).toHaveTextContent("New");
+    expect(unfiled).toHaveTextContent("Unfiled");
+    expect(panel.getByRole("button", { name: /webhook retry/ })).toHaveTextContent(/#1\s*Add retry to webhook sender/);
+    expect(screen.queryByTestId("bell-dot")).toBeNull();
+
+    // Keys in the panel don't reach the list behind it.
+    const before = heading();
+    await user.keyboard("1");
+    expect(heading()).toBe(before);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Recently captured" })).toBeNull();
+  });
+
+  it("opens an unfiled session from the bell, which clears its New badge", async () => {
+    fakeBackend();
+    notFirstRun();
+    const user = await boot();
+    await user.click(bell());
+    await user.click(await screen.findByRole("button", { name: /Stream CSV exports/ }));
+    const page = within(screen.getByRole("main", { name: "Unfiled" }));
+    const card = page.getByRole("listitem", { name: "Stream CSV exports" });
+    expect(within(card).queryByText("New")).toBeNull();
+  });
+
+  it("badges a task with a new session until the task is opened", async () => {
+    const b = fakeBackend();
+    b.tasks[2].sessions = [{ ...b.tasks[0].sessions![0], id: "sess-77", name: "tidy" }];
+    notFirstRun();
+    const user = await boot();
+    await user.keyboard("1");
+    await waitFor(() => expect(within(screen.getByTestId("row-3")).getByText("New")).toBeInTheDocument());
+    await user.click(screen.getByTestId("row-3"));
+    await waitFor(() => expect(within(screen.getByTestId("row-3")).queryByText("New")).toBeNull());
+  });
+
+  it("shows nothing new on the first run", async () => {
+    fakeBackend();
+    const user = await boot();
+    await user.click(bell());
+    const panel = within(await screen.findByRole("dialog", { name: "Recently captured" }));
+    await panel.findByRole("button", { name: /Stream CSV exports/ });
+    expect(panel.queryByText("New")).toBeNull();
+    expect(screen.queryByTestId("bell-dot")).toBeNull();
+  });
+});
+
 describe("merging tasks", () => {
   it("merges from the right-click menu into a picked task", async () => {
     const b = fakeBackend(openTasks());
@@ -1032,5 +1104,32 @@ describe("capture switches", () => {
     const user = await boot();
     await user.click(sidebar().getByRole("button", { name: /^Unfiled/ }));
     expect(await screen.findByText(/Capture is off/)).toBeInTheDocument();
+  });
+});
+
+describe("session threads", () => {
+  it("names each thread by what it did, says why it's linked, and can take it off the task", async () => {
+    const b = fakeBackend();
+    b.tasks[0].sessions!.push({
+      id: "sess-77",
+      name: "Kpi-dashboard PR 190",
+      title: "Record PR 190",
+      via: "branch",
+      first_seen: new Date().toISOString(),
+      last_seen: new Date().toISOString(),
+      first_at: new Date().toISOString(),
+      last_at: new Date().toISOString(),
+    });
+    b.tasks[0].sessions![0].via = "claude";
+    await boot();
+    const thread = (await screen.findByText("Record PR 190")).closest("li")!;
+    expect(thread).toHaveTextContent("Linked by its tars branch · session “Kpi-dashboard PR 190”");
+    expect(screen.getByText("webhook retry").closest("li")).toHaveTextContent("Claude matched it to this task");
+
+    await userEvent.setup().click(within(thread).getByRole("button", { name: "Not this task" }));
+    expect(b.callsTo("unlink_session")).toEqual([{ task: 1, session: "sess-77" }]);
+    await waitFor(() => expect(screen.queryByText("Record PR 190")).toBeNull());
+    expect(screen.getByRole("status")).toHaveTextContent("Took “Kpi-dashboard PR 190” off #1");
+    await waitFor(() => expect(screen.getByTestId("count-unfiled")).toHaveTextContent("2"));
   });
 });

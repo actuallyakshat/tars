@@ -12,6 +12,16 @@ use serde_json::Value;
 /// Folders GUI apps on macOS don't get on PATH but where tars usually lives.
 pub const EXTRA_DIRS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin"];
 
+/// The CLI this build drives. Debug builds (`tauri dev`) and the Tars Dev app
+/// (built by `tars dev update` with TARS_FLAVOR=dev) use tars-dev and its
+/// database, so working on the app never touches your real tasks. Only
+/// release builds use tars.
+pub const BIN_NAME: &str = match option_env!("TARS_FLAVOR") {
+    Some(f) if matches!(f.as_bytes(), b"dev") => "tars-dev",
+    _ if cfg!(debug_assertions) => "tars-dev",
+    _ => "tars",
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
@@ -49,10 +59,12 @@ impl std::error::Error for CliError {}
 
 pub type Result<T> = std::result::Result<T, CliError>;
 
-/// Candidate tars binaries in the order they should be tried. `TARS_BIN`, when
+/// Candidate binaries called name (BIN_NAME in the app) in the order they
+/// should be tried. `TARS_BIN`, when
 /// set, is the only candidate. Otherwise PATH comes first, then the Homebrew
 /// folders, then the Go bin directory.
 pub fn candidates(
+    name: &str,
     tars_bin: Option<&str>,
     path: Option<&str>,
     home: Option<&Path>,
@@ -72,7 +84,7 @@ pub fn candidates(
     }
     let mut out: Vec<PathBuf> = Vec::new();
     for d in dirs(path, home) {
-        let p = d.join("tars");
+        let p = d.join(name);
         if exists(&p) && !out.contains(&p) {
             out.push(p);
         }
@@ -90,6 +102,8 @@ fn dirs(path: Option<&str>, home: Option<&Path>) -> Vec<PathBuf> {
     out.extend(EXTRA_DIRS.iter().map(PathBuf::from));
     if let Some(h) = home {
         out.push(h.join("go").join("bin"));
+        // Where tars dev update installs tars-dev.
+        out.push(h.join(".local").join("bin"));
     }
     out
 }
@@ -238,6 +252,11 @@ pub mod args {
         vec!["unfiled".into()]
     }
 
+    /// Sessions captured in the last week, linked to a task or unfiled.
+    pub fn captured() -> Vec<String> {
+        vec!["captured".into()]
+    }
+
     /// Files a captured session into task `into`, or into a new task when
     /// `into` is None (titled `title`, or the session's own title if empty).
     pub fn file_session(session: &str, into: Option<i64>, title: &str) -> Vec<String> {
@@ -255,6 +274,10 @@ pub mod args {
             }
         }
         a
+    }
+
+    pub fn unlink(task: i64, session: &str) -> Vec<String> {
+        vec!["unlink".into(), format!("--task={task}"), "--".into(), session.into()]
     }
 
     pub fn dismiss(session: &str) -> Vec<String> {
@@ -275,6 +298,71 @@ pub mod args {
             a.push(format!("--repo={r}"));
         }
         a
+    }
+
+    /// Usage and cost over the last `days` days (0 for everything), or for
+    /// one task over all time.
+    pub fn usage(days: u32, task: Option<i64>) -> Vec<String> {
+        let mut a = vec!["usage".to_string(), format!("--days={days}")];
+        if let Some(t) = task {
+            a.push(format!("--task={t}"));
+        }
+        a
+    }
+
+    pub fn todos() -> Vec<String> {
+        vec!["todo".into(), "ls".into()]
+    }
+
+    pub fn todo_new_list(name: &str) -> Vec<String> {
+        vec!["todo".into(), "list".into(), "new".into(), "--".into(), name.trim().into()]
+    }
+
+    pub fn todo_rename_list(id: i64, name: &str) -> Vec<String> {
+        vec!["todo".into(), "list".into(), "rename".into(), "--".into(), id.to_string(), name.trim().into()]
+    }
+
+    /// Positions count from 1, as on the command line.
+    pub fn todo_move_list(id: i64, position: i64) -> Vec<String> {
+        vec!["todo".into(), "list".into(), "move".into(), id.to_string(), position.to_string()]
+    }
+
+    pub fn todo_remove_list(id: i64, force: bool) -> Vec<String> {
+        let mut a = vec!["todo".to_string(), "list".into(), "rm".into()];
+        if force {
+            a.push("--force".into());
+        }
+        a.extend(["--".into(), id.to_string()]);
+        a
+    }
+
+    pub fn todo_add(list: i64, text: &str) -> Vec<String> {
+        vec!["todo".into(), "add".into(), "--".into(), list.to_string(), text.trim().into()]
+    }
+
+    pub fn todo_edit(id: i64, text: &str) -> Vec<String> {
+        vec!["todo".into(), "edit".into(), "--".into(), id.to_string(), text.trim().into()]
+    }
+
+    pub fn todo_check(id: i64, done: bool) -> Vec<String> {
+        vec!["todo".into(), if done { "check" } else { "uncheck" }.into(), id.to_string()]
+    }
+
+    /// Moves an item to a position (from 1), into another list when given.
+    pub fn todo_move(id: i64, position: i64, list: Option<i64>) -> Vec<String> {
+        let mut a = vec!["todo".to_string(), "move".into(), id.to_string(), position.to_string()];
+        if let Some(l) = list {
+            a.push(format!("--list={l}"));
+        }
+        a
+    }
+
+    pub fn todo_remove(id: i64) -> Vec<String> {
+        vec!["todo".into(), "rm".into(), id.to_string()]
+    }
+
+    pub fn todo_clear(list: i64) -> Vec<String> {
+        vec!["todo".into(), "clear".into(), list.to_string()]
     }
 
     /// Values use --flag=value so an empty one clears the field and one
@@ -461,8 +549,29 @@ impl Tars {
         }
     }
 
+    /// Sessions captured lately, linked or unfiled. A CLI from before this
+    /// command has none to show, so that's an empty list too.
+    pub fn captured(&self) -> Result<Value> {
+        let out = match self.run(&args::captured()) {
+            Err(e) if e.kind == ErrorKind::TooOld && e.message.contains("unknown command") => {
+                return Ok(Value::Array(vec![]))
+            }
+            r => r?,
+        };
+        let v = parse_json(&out)?;
+        match &v {
+            Value::Array(items) if items.iter().all(|c| c.get("session_id").is_some()) => Ok(v),
+            _ => Err(CliError::new(ErrorKind::BadOutput, "Expected a list of sessions from tars.")),
+        }
+    }
+
     pub fn file_session(&self, session: &str, into: Option<i64>, title: &str) -> Result<Value> {
         parse_object(&self.run(&args::file_session(session, into, title))?)
+    }
+
+    /// Takes a session off a task; one that changed code goes back to unfiled.
+    pub fn unlink(&self, task: i64, session: &str) -> Result<Value> {
+        parse_object(&self.run(&args::unlink(task, session))?)
     }
 
     pub fn dismiss(&self, session: &str) -> Result<Value> {
@@ -478,6 +587,98 @@ impl Tars {
 
     pub fn capture(&self, on: Option<bool>, repo: Option<&str>) -> Result<Value> {
         parse_object(&self.run(&args::capture(on, repo))?)
+    }
+
+    /// What Claude Code cost, priced by the CLI at live rates. A CLI from
+    /// before the Usage page answers "unknown command": that's a plain error
+    /// asking for an update, not a CLI too old to use at all.
+    pub fn usage(&self, days: u32, task: Option<i64>) -> Result<Value> {
+        let out = match self.run(&args::usage(days, task)) {
+            Err(e) if e.kind == ErrorKind::TooOld && e.message.contains("unknown command") => {
+                return Err(CliError::new(
+                    ErrorKind::Failed,
+                    format!(
+                        "{} predates the Usage page. Update it with `tars update`, or for tars-dev run \
+                         `go run ./cmd/tars dev update` in your tars checkout.",
+                        self.bin.display()
+                    ),
+                ))
+            }
+            r => r?,
+        };
+        let v = parse_json(&out)?;
+        if v.get("total").is_some() && v.get("daily").map_or(false, Value::is_array) {
+            Ok(v)
+        } else {
+            Err(CliError::new(ErrorKind::BadOutput, "Expected a usage summary from tars."))
+        }
+    }
+
+    /// Every todo list with its items. A CLI from before todo lists has no
+    /// `todo`; that's no lists, not an outdated binary (which would make the
+    /// app drop it and show the CLI problem screen).
+    pub fn todos(&self) -> Result<Value> {
+        let out = match self.run(&args::todos()) {
+            Err(e) if e.kind == ErrorKind::TooOld && e.message.contains("unknown command") => {
+                return Ok(Value::Array(vec![]))
+            }
+            r => r?,
+        };
+        parse_todo_lists(&out)
+    }
+
+    fn run_todo(&self, cmd: &[String]) -> Result<String> {
+        todo_feature(&self.bin, self.run(cmd))
+    }
+
+    pub fn todo_new_list(&self, name: &str) -> Result<Value> {
+        check_todo_name(name)?;
+        parse_object(&self.run_todo(&args::todo_new_list(name))?)
+    }
+
+    pub fn todo_rename_list(&self, id: i64, name: &str) -> Result<Value> {
+        check_todo_name(name)?;
+        parse_object(&self.run_todo(&args::todo_rename_list(id, name))?)
+    }
+
+    pub fn todo_move_list(&self, id: i64, position: i64) -> Result<Value> {
+        check_position(position)?;
+        parse_object(&self.run_todo(&args::todo_move_list(id, position))?)
+    }
+
+    pub fn todo_remove_list(&self, id: i64, force: bool) -> Result<Value> {
+        parse_object(&self.run_todo(&args::todo_remove_list(id, force))?)
+    }
+
+    pub fn todo_add(&self, list: i64, text: &str) -> Result<Value> {
+        check_todo_text(text)?;
+        parse_object(&self.run_todo(&args::todo_add(list, text))?)
+    }
+
+    pub fn todo_edit(&self, id: i64, text: &str) -> Result<Value> {
+        check_todo_text(text)?;
+        parse_object(&self.run_todo(&args::todo_edit(id, text))?)
+    }
+
+    pub fn todo_check(&self, id: i64, done: bool) -> Result<Value> {
+        let v = parse_json(&self.run_todo(&args::todo_check(id, done))?)?;
+        match &v {
+            Value::Array(items) if items.iter().all(|i| i.get("id").is_some()) => Ok(v),
+            _ => Err(CliError::new(ErrorKind::BadOutput, "Expected the checked todos from tars.")),
+        }
+    }
+
+    pub fn todo_move(&self, id: i64, position: i64, list: Option<i64>) -> Result<Value> {
+        check_position(position)?;
+        parse_object(&self.run_todo(&args::todo_move(id, position, list))?)
+    }
+
+    pub fn todo_remove(&self, id: i64) -> Result<Value> {
+        parse_object(&self.run_todo(&args::todo_remove(id))?)
+    }
+
+    pub fn todo_clear(&self, list: i64) -> Result<Value> {
+        parse_object(&self.run_todo(&args::todo_clear(list))?)
     }
 
     /// Deletes a task for good, with its log, reports and session links.
@@ -517,6 +718,55 @@ fn check_section(section: &str, text: &str) -> Result<()> {
         return Err(CliError::new(ErrorKind::Failed, "A preference can't be just \"-\"."));
     }
     Ok(())
+}
+
+/// Runs a todo command. A CLI from before todo lists answers "unknown
+/// command"; that's a missing feature, not a CLI too old to use at all, so it
+/// becomes a plain error instead of the app dropping the binary and showing
+/// the CLI problem screen.
+fn todo_feature(bin: &Path, res: Result<String>) -> Result<String> {
+    match res {
+        Err(e) if e.kind == ErrorKind::TooOld && e.message.contains("unknown command") => Err(CliError::new(
+            ErrorKind::Failed,
+            format!(
+                "{} predates todo lists. Update it with `tars update`, or for tars-dev run \
+                 `go run ./cmd/tars dev update` in your tars checkout.",
+                bin.display()
+            ),
+        )),
+        r => r,
+    }
+}
+
+/// The CLI checks these too; checking here gives the same message without
+/// starting a process, and keeps blank input from reaching it at all.
+fn check_todo_name(name: &str) -> Result<()> {
+    if name.trim().is_empty() {
+        return Err(CliError::new(ErrorKind::Failed, "A list needs a name."));
+    }
+    Ok(())
+}
+
+fn check_todo_text(text: &str) -> Result<()> {
+    if text.trim().is_empty() {
+        return Err(CliError::new(ErrorKind::Failed, "A todo needs some text."));
+    }
+    Ok(())
+}
+
+fn check_position(position: i64) -> Result<()> {
+    if position < 1 {
+        return Err(CliError::new(ErrorKind::Failed, "Positions start at 1."));
+    }
+    Ok(())
+}
+
+pub fn parse_todo_lists(s: &str) -> Result<Value> {
+    let v = parse_json(s)?;
+    match &v {
+        Value::Array(ls) if ls.iter().all(|l| l.get("name").is_some() && l.get("items").is_some_and(Value::is_array)) => Ok(v),
+        _ => Err(CliError::new(ErrorKind::BadOutput, "Expected todo lists from tars.")),
+    }
 }
 
 /// Tries each candidate and returns the first one new enough. If every one is
@@ -660,6 +910,7 @@ mod tests {
     fn candidates_follow_path_then_homebrew_then_go() {
         let home = Path::new("/Users/me");
         let found = candidates(
+            "tars",
             None,
             Some("/usr/bin:/bin"),
             Some(home),
@@ -672,9 +923,9 @@ mod tests {
 
     #[test]
     fn candidates_dedupe_and_handle_empty_path() {
-        let found = candidates(None, Some("/opt/homebrew/bin::"), None, fs(&["/opt/homebrew/bin/tars"]));
+        let found = candidates("tars", None, Some("/opt/homebrew/bin::"), None, fs(&["/opt/homebrew/bin/tars"]));
         assert_eq!(found, vec![PathBuf::from("/opt/homebrew/bin/tars")]);
-        assert!(candidates(None, None, None, fs(&[])).is_empty());
+        assert!(candidates("tars", None, None, None, fs(&[])).is_empty());
     }
 
     #[test]
@@ -682,18 +933,18 @@ mod tests {
         let home = Path::new("/Users/me");
         let exists = fs(&["/opt/homebrew/bin/tars", "/Users/me/dev/tars", "/opt/homebrew/bin/tars-dev"]);
         assert_eq!(
-            candidates(Some("~/dev/tars"), Some("/usr/bin"), Some(home), &exists),
+            candidates("tars", Some("~/dev/tars"), Some("/usr/bin"), Some(home), &exists),
             vec![PathBuf::from("/Users/me/dev/tars")]
         );
         // A bare name is looked up like a command.
         assert_eq!(
-            candidates(Some("tars-dev"), Some("/usr/bin"), Some(home), &exists),
+            candidates("tars", Some("tars-dev"), Some("/usr/bin"), Some(home), &exists),
             vec![PathBuf::from("/opt/homebrew/bin/tars-dev")]
         );
         // Pointing at something that isn't there finds nothing, not a fallback.
-        assert!(candidates(Some("/nope/tars"), Some("/usr/bin"), Some(home), &exists).is_empty());
+        assert!(candidates("tars", Some("/nope/tars"), Some("/usr/bin"), Some(home), &exists).is_empty());
         // Blank means unset.
-        assert_eq!(candidates(Some("  "), None, None, &exists), vec![PathBuf::from("/opt/homebrew/bin/tars")]);
+        assert_eq!(candidates("tars", Some("  "), None, None, &exists), vec![PathBuf::from("/opt/homebrew/bin/tars")]);
     }
 
     #[test]
@@ -707,6 +958,8 @@ mod tests {
         );
         assert_eq!(args::answer(7, "billing"), ["answer", "7", "--", "billing"]);
         assert_eq!(args::seen(9), ["seen", "9"]);
+        assert_eq!(args::usage(30, None), ["usage", "--days=30"]);
+        assert_eq!(args::usage(0, Some(12)), ["usage", "--days=0", "--task=12"]);
         assert_eq!(args::mv(3, "in-review"), ["mv", "3", "in-review"]);
         assert_eq!(args::done(3), ["done", "3"]);
         assert_eq!(args::show(12), ["show", "12"]);
@@ -758,15 +1011,78 @@ mod tests {
     }
 
     #[test]
+    fn dev_builds_look_for_tars_dev() {
+        let home = Path::new("/Users/me");
+        let found = candidates("tars-dev", None, Some("/usr/bin"), Some(home), |p| p == Path::new("/Users/me/.local/bin/tars-dev"));
+        assert_eq!(found, vec![PathBuf::from("/Users/me/.local/bin/tars-dev")]);
+        let dev = option_env!("TARS_FLAVOR").is_some_and(|f| f == "dev") || cfg!(debug_assertions);
+        assert_eq!(BIN_NAME, if dev { "tars-dev" } else { "tars" });
+    }
+
+    #[test]
     fn capture_args() {
         assert_eq!(args::file_session("-abc", Some(21), "ignored"), ["file", "--", "-abc", "21"]);
         assert_eq!(args::file_session("abc", None, "  "), ["file", "--new", "--", "abc"]);
         assert_eq!(args::file_session("abc", None, " -Retry "), ["file", "--new", "--title=-Retry", "--", "abc"]);
         assert_eq!(args::dismiss("abc"), ["dismiss", "--", "abc"]);
+        assert_eq!(args::unlink(26, "-abc"), ["unlink", "--task=26", "--", "-abc"]);
         assert_eq!(args::merge(3, 1), ["merge", "3", "1"]);
         assert_eq!(args::capture(None, None), ["capture"]);
         assert_eq!(args::capture(Some(false), Some("billing")), ["capture", "off", "--repo=billing"]);
         assert_eq!(Tars::new("/nonexistent/tars").merge(2, 2).unwrap_err().kind, ErrorKind::Failed);
+    }
+
+    #[test]
+    fn todo_args_keep_text_after_dashes() {
+        assert_eq!(args::todos(), ["todo", "ls"]);
+        assert_eq!(args::todo_new_list(" -Release "), ["todo", "list", "new", "--", "-Release"]);
+        assert_eq!(args::todo_rename_list(3, " Home "), ["todo", "list", "rename", "--", "3", "Home"]);
+        assert_eq!(args::todo_move_list(3, 1), ["todo", "list", "move", "3", "1"]);
+        assert_eq!(args::todo_remove_list(3, false), ["todo", "list", "rm", "--", "3"]);
+        assert_eq!(args::todo_remove_list(3, true), ["todo", "list", "rm", "--force", "--", "3"]);
+        assert_eq!(args::todo_add(2, " -race in CI "), ["todo", "add", "--", "2", "-race in CI"]);
+        assert_eq!(args::todo_edit(7, "-"), ["todo", "edit", "--", "7", "-"]);
+        assert_eq!(args::todo_check(7, true), ["todo", "check", "7"]);
+        assert_eq!(args::todo_check(7, false), ["todo", "uncheck", "7"]);
+        assert_eq!(args::todo_move(7, 2, None), ["todo", "move", "7", "2"]);
+        assert_eq!(args::todo_move(7, 1, Some(4)), ["todo", "move", "7", "1", "--list=4"]);
+        assert_eq!(args::todo_remove(7), ["todo", "rm", "7"]);
+        assert_eq!(args::todo_clear(2), ["todo", "clear", "2"]);
+    }
+
+    #[test]
+    fn todo_input_is_checked_before_running() {
+        let t = Tars::new("/nonexistent/tars");
+        assert_eq!(t.todo_new_list("  ").unwrap_err().message, "A list needs a name.");
+        assert_eq!(t.todo_rename_list(1, "").unwrap_err().kind, ErrorKind::Failed);
+        assert_eq!(t.todo_add(1, " ").unwrap_err().message, "A todo needs some text.");
+        assert_eq!(t.todo_edit(1, "").unwrap_err().kind, ErrorKind::Failed);
+        assert_eq!(t.todo_move(1, 0, None).unwrap_err().message, "Positions start at 1.");
+        assert_eq!(t.todo_move_list(1, -2).unwrap_err().kind, ErrorKind::Failed);
+    }
+
+    #[test]
+    fn a_cli_without_todo_lists_fails_the_write_but_stays_usable() {
+        let bin = Path::new("/Users/me/.local/bin/tars-dev");
+        let old = Err(classify_failure(bin, "Error: unknown command \"todo\" for \"tars-dev\"\n"));
+        let e = todo_feature(bin, old).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::Failed);
+        assert!(e.message.contains("tars-dev predates todo lists"), "{}", e.message);
+        assert!(e.message.contains("go run ./cmd/tars dev update"), "{}", e.message);
+        // Other failures pass through untouched.
+        let other = CliError::new(ErrorKind::Failed, "todo 9: not found");
+        assert_eq!(todo_feature(bin, Err(other.clone())).unwrap_err(), other);
+        let flag = Err(classify_failure(bin, "Error: unknown flag: --json\n"));
+        assert_eq!(todo_feature(bin, flag).unwrap_err().kind, ErrorKind::TooOld);
+    }
+
+    #[test]
+    fn parses_todo_lists() {
+        let v = parse_todo_lists(r#"[{"id":1,"name":"Release","items":[{"id":3,"text":"Tag v0.4.0","done":true}]}]"#).unwrap();
+        assert_eq!(v[0]["items"][0]["done"], true);
+        assert_eq!(parse_todo_lists("[]").unwrap(), Value::Array(vec![]));
+        assert_eq!(parse_todo_lists(r#"[{"id":1,"name":"x"}]"#).unwrap_err().kind, ErrorKind::BadOutput);
+        assert_eq!(parse_todo_lists(r#"[{"id":1,"title":"a task"}]"#).unwrap_err().kind, ErrorKind::BadOutput);
     }
 
     #[test]

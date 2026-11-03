@@ -22,12 +22,12 @@ func (a *app) linkSession(taskID int64, id string) error {
 		return nil
 	}
 	s := claude.Inspect(claude.ConfigDir(), id)
-	return a.st.LinkSession(taskID, store.Session{ID: s.ID, Name: s.Name, LaunchDir: s.LaunchDir})
+	return a.st.LinkSession(taskID, store.Session{ID: s.ID, Name: s.Name, LaunchDir: s.LaunchDir}, store.ViaAgent)
 }
 
 func reportCmd(a *app) *cobra.Command {
 	var r store.Report
-	var session string
+	var session, thread string
 	cmd := &cobra.Command{
 		Use:   "report <id>",
 		Short: "Record what an agent did on a task, in a few short lines",
@@ -60,6 +60,11 @@ The Claude Code session running this command is linked automatically.`, store.Re
 			if err := a.linkSession(id, session); err != nil {
 				return err
 			}
+			if thread != "" && session != "" {
+				if err := a.st.SetThreadTitle(id, session, thread); err != nil {
+					return err
+				}
+			}
 			return a.emit(r, func() string {
 				msg := fmt.Sprintf("Reported on #%d", id)
 				if r.NeedsYou != "" {
@@ -75,6 +80,7 @@ The Claude Code session running this command is linked automatically.`, store.Re
 	fl.StringVar(&r.NeedsYou, "needs-you", "", "one question or decision for the user, if any")
 	fl.StringVar(&r.Next, "next", "", "what happens next")
 	fl.StringVar(&session, "session", "", "Claude session ID (default: the current session)")
+	fl.StringVar(&thread, "thread", "", "name what this session did for the task, in a few words")
 	return cmd
 }
 

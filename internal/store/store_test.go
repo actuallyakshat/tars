@@ -495,13 +495,13 @@ func TestSessionsLinkAndCascade(t *testing.T) {
 	a := mustCreate(t, s, &Task{Title: "a"})
 	b := mustCreate(t, s, &Task{Title: "b"})
 
-	if err := s.LinkSession(a.ID, Session{}); err != nil {
+	if err := s.LinkSession(a.ID, Session{}, "agent"); err != nil {
 		t.Fatal("empty session ID should be a no-op")
 	}
-	s.LinkSession(a.ID, Session{ID: "s1", Name: "first name", LaunchDir: "/w"})
-	s.LinkSession(a.ID, Session{ID: "s2"})
-	s.LinkSession(b.ID, Session{ID: "s1", Name: ""}) // empty name keeps the stored one
-	s.LinkSession(a.ID, Session{ID: "s2", Name: "renamed"})
+	s.LinkSession(a.ID, Session{ID: "s1", Name: "first name", LaunchDir: "/w"}, "agent")
+	s.LinkSession(a.ID, Session{ID: "s2"}, "agent")
+	s.LinkSession(b.ID, Session{ID: "s1", Name: ""}, "agent") // empty name keeps the stored one
+	s.LinkSession(a.ID, Session{ID: "s2", Name: "renamed"}, "agent")
 
 	got, _ := s.GetTask(a.ID)
 	if len(got.Sessions) != 2 || got.Sessions[0].ID != "s2" || got.Sessions[0].Name != "renamed" {

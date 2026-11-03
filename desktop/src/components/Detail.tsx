@@ -1,4 +1,5 @@
 import type { Report, Status, Task, TaskSession } from "../api";
+import { TaskCost } from "./TaskCost";
 import { ago, clampPriority, dueText, openQuestion, prLabel } from "../model";
 import { PrIcon } from "./TaskList";
 import { Composer } from "./Composer";
@@ -18,6 +19,7 @@ export interface DetailActions {
   onCopy: (text: string, what: string) => void;
   onReveal: (path: string) => void;
   onTerminal: (s: TaskSession) => void;
+  onUnlink: (s: TaskSession) => void;
   setAnswering: (v: boolean) => void;
   setNoting: (v: boolean) => void;
   setLogOpen: (v: boolean) => void;
@@ -36,6 +38,17 @@ interface Props extends DetailActions {
 
 /** /Users/me/Work/x → ~/Work/x, so the part that matters fits. */
 const shortPath = (p: string) => p.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
+
+// Why a session is on the task, as shown under its name.
+const VIA: Record<string, string> = {
+  branch: "Linked by its tars branch",
+  worktree: "Linked by its worktree",
+  pr: "Linked by the task's pull request",
+  jira: "Linked by the Jira key",
+  claude: "Claude matched it to this task",
+  user: "Filed by you",
+  agent: "An agent updated this task from it",
+};
 
 export function Detail(p: Props) {
   const { task: t, now } = p;
@@ -113,13 +126,19 @@ export function Detail(p: Props) {
 
         {!!t.sessions?.length && (
           <Section title="Sessions">
+            <TaskCost taskId={t.id} sessions={t.sessions.length} />
             <ul className="sessions">
               {t.sessions.map((s) => (
                 <li key={s.id} className="session">
                   <div className="session-top">
-                    <span className="session-name">{s.name || "Unnamed session"}</span>
+                    <span className="session-name">{s.title || s.name || "Unnamed session"}</span>
                     <span className="session-when muted">{ago(s.last_at, now)}</span>
                   </div>
+                  {((s.title && s.name && s.title !== s.name) || (s.via && VIA[s.via])) && (
+                    <div className="session-via muted">
+                      {[s.via && VIA[s.via], s.title && s.name && s.title !== s.name ? `session “${s.name}”` : ""].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
                   {s.launch_dir && (
                     <div className="session-dir mono" title={`Started in ${s.launch_dir}`}>
                       {shortPath(s.launch_dir)}
@@ -131,6 +150,13 @@ export function Detail(p: Props) {
                     </button>
                     <button className="ghost" onClick={() => p.onCopy(`claude --resume ${s.id}`, "resume command")}>
                       Copy command
+                    </button>
+                    <button
+                      className="link session-unlink"
+                      onClick={() => p.onUnlink(s)}
+                      title="Take this session off the task. If it changed code, it goes back to Unfiled."
+                    >
+                      Not this task
                     </button>
                     <button
                       className="session-id mono"
@@ -191,7 +217,7 @@ interface ReportProps {
 
 function ReportCard({ r, now, open, asked, answering, onAnswer, setAnswering }: ReportProps) {
   return (
-    <section className={"report" + (open ? " asking" : "")} aria-label="Report">
+    <section className="report" aria-label="Report">
       <div className="report-head">
         <span>Report</span>
         <span className="muted">{ago(r.at, now)}</span>
@@ -205,33 +231,6 @@ function ReportCard({ r, now, open, asked, answering, onAnswer, setAnswering }: 
             <dd>{r.verified}</dd>
           </>
         )}
-        {r.needs_you && (
-          <>
-            <dt className="needs">needs you</dt>
-            <dd>
-              {r.answered_at ? (
-                <div className="qa">
-                  <div>
-                    <span className="muted">Asked: </span>
-                    {r.needs_you}
-                  </div>
-                  <div>
-                    <span className="muted">You answered: </span>
-                    {r.answer}
-                    <span className="muted"> · {ago(r.answered_at, now)}</span>
-                  </div>
-                </div>
-              ) : (
-                <span className="question">
-                  <span className="q" aria-hidden="true">
-                    ?
-                  </span>{" "}
-                  {r.needs_you}
-                </span>
-              )}
-            </dd>
-          </>
-        )}
         {r.next && (
           <>
             <dt>next</dt>
@@ -239,25 +238,36 @@ function ReportCard({ r, now, open, asked, answering, onAnswer, setAnswering }: 
           </>
         )}
       </dl>
-      {asked &&
-        (answering ? (
-          <Composer
-            label="Your answer"
-            placeholder="Your answer. The next agent on this task will see it."
-            submitLabel={open ? "Send answer" : "Save answer"}
-            initial={open ? "" : (r.answer ?? "")}
-            onSubmit={onAnswer}
-            onCancel={() => setAnswering(false)}
-          />
-        ) : open ? (
-          <button className="primary" onClick={() => setAnswering(true)} title="a">
-            Answer
-          </button>
-        ) : (
-          <button className="ghost" onClick={() => setAnswering(true)} title="a">
-            Change answer
-          </button>
-        ))}
+      {r.needs_you && (
+        <div className={"ask" + (r.answered_at ? " answered" : "")}>
+          <div className="ask-label">
+            <span className="ask-dot" aria-hidden="true" />
+            {r.answered_at ? "You answered" : "Needs you"}
+            {r.answered_at && <span className="muted">{ago(r.answered_at, now)}</span>}
+          </div>
+          <p className="ask-question">{r.needs_you}</p>
+          {r.answered_at && !answering && <p className="ask-answer">{r.answer}</p>}
+          {asked &&
+            (answering ? (
+              <Composer
+                label="Your answer"
+                placeholder="Your answer. The next agent on this task will see it."
+                submitLabel={open ? "Send answer" : "Save answer"}
+                initial={open ? "" : (r.answer ?? "")}
+                onSubmit={onAnswer}
+                onCancel={() => setAnswering(false)}
+              />
+            ) : open ? (
+              <button className="primary" onClick={() => setAnswering(true)} title="a">
+                Answer
+              </button>
+            ) : (
+              <button className="ghost" onClick={() => setAnswering(true)} title="a">
+                Change answer
+              </button>
+            ))}
+        </div>
+      )}
     </section>
   );
 }

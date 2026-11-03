@@ -1206,11 +1206,7 @@ func detailContent(t *store.Task, width int, showLog bool, now time.Time) string
 	if len(t.Sessions) > 0 {
 		b.WriteString("\n" + groupSt.Render("SESSIONS") + "  " + helpKey.Render("o") + Muted.Render(" copies the latest resume command") + "\n")
 		for _, ss := range t.Sessions {
-			name := ss.Name
-			if name == "" {
-				name = "Unnamed session"
-			}
-			b.WriteString(textSt.Render(Truncate(name, width-14)) + Muted.Render("  "+Ago(ss.LastAt)) + "\n")
+			b.WriteString(textSt.Render(Truncate(ThreadName(ss), width-14)) + Muted.Render("  "+Ago(ss.LastAt)) + "\n")
 			b.WriteString(Muted.Render("  claude --resume "+ss.ID) + "\n")
 		}
 	}

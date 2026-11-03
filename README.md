@@ -48,7 +48,7 @@ Capture starts with your next session. Linking a session or recording a report r
 brew install --cask actuallyakshat/tap/tars-app
 ```
 
-**Updating.** Run `/tars:update` in Claude Code: it upgrades the CLI, the plugin and the desktop app, whichever you have, and tells you what to reload. By hand: `brew upgrade --cask tars tars-app` and `/plugin marketplace update tars`.
+**Updating.** Run `tars update`. It upgrades the CLI and the desktop app through Homebrew (whichever you have) and the Claude Code plugin, then tells you what to restart. `/tars:update` in Claude Code does the same.
 
 ## The CLI
 
@@ -87,6 +87,7 @@ tars note 12 "root cause: N+1 in exporter"
 
 ```bash
 tars unfiled                   # sessions that changed code but matched no task
+tars captured                  # sessions captured this week, linked or unfiled
 tars file 3f2a9c1e 21          # file one into #21 (a prefix of the session ID is enough)
 tars file 3f2a9c1e --new       # make it a new task, titled after the session
 tars dismiss 3f2a9c1e          # not task work
@@ -137,10 +138,28 @@ Everything lives in one SQLite file at `~/.local/share/tars/tars.db`. Override t
 ```bash
 go test ./...
 go run ./cmd/tars
-go install ./cmd/tars                   # local build into your Go bin directory
-scripts/remove-dev-binary.sh            # remove it again, back to the Homebrew tars
 goreleaser release --snapshot --clean   # cross-platform binaries in dist/
 ```
+
+### A dev build next to the release
+
+`tars dev update` builds your checkout and installs it beside the released tars, without touching it:
+
+| | Release | Dev build |
+|---|---|---|
+| CLI | `tars` (Homebrew) | `tars-dev` in `~/.local/bin` |
+| Database | `~/.local/share/tars` | `~/.local/share/tars-dev` (`$TARS_DEV_HOME`) |
+| App | Tars | Tars Dev, in /Applications |
+| Plugin | `tars`, `/tars:tars` | `tars-dev`, `/tars-dev:tars` |
+
+```bash
+go run ./cmd/tars dev update     # the first time, inside the checkout (it remembers the path)
+tars dev update                  # later, from anywhere; rebuilds the CLI, plugin and app
+tars dev update --seed           # also copy your real tasks into the dev database
+tars dev seed [--yes]            # just copy the real tasks in (the real database is only read)
+```
+
+Both plugins capture each session: the release one into your real tasks, the dev one into the dev database. Restart Claude Code after `tars dev update` to load the dev plugin. Building the app needs Node and Rust and takes a few minutes. Make sure `~/.local/bin` is on your PATH.
 
 ## License
 

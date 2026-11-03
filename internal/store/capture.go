@@ -78,11 +78,11 @@ func (c *Capture) Title() string {
 // branch, worktree and repo on the task where it has none, so the feature's
 // other threads match it without asking. name and launchDir describe the
 // session when known.
-func (s *Store) FileCapture(c *Capture, t *Task, name, launchDir string) error {
+func (s *Store) FileCapture(c *Capture, t *Task, name, launchDir, via string) error {
 	if launchDir == "" {
 		launchDir = c.Worktree
 	}
-	if err := s.LinkSession(t.ID, Session{ID: c.SessionID, Name: name, LaunchDir: launchDir}); err != nil {
+	if err := s.LinkSession(t.ID, Session{ID: c.SessionID, Name: name, LaunchDir: launchDir}, via); err != nil {
 		return err
 	}
 	changed := false
@@ -315,8 +315,8 @@ func (s *Store) MergeTask(from, into int64) error {
 		{`UPDATE tasks SET body=?, jira=?, repo=?, tags=?, due=?, acceptance=?, branch=?, worktree=?, pr=?, updated_at=? WHERE id=?`,
 			[]any{dst.Body, dst.Jira, dst.Repo, strings.Join(tags, ","), dst.Due, dst.Acceptance, dst.Branch, dst.Worktree, dst.PR, t, into}},
 		// A session that touched both tasks keeps its row on into.
-		{`INSERT OR IGNORE INTO task_sessions (task_id, session_id, first_at, last_at)
-			SELECT ?, session_id, first_at, last_at FROM task_sessions WHERE task_id = ?`, []any{into, from}},
+		{`INSERT OR IGNORE INTO task_sessions (task_id, session_id, first_at, last_at, via, title)
+			SELECT ?, session_id, first_at, last_at, via, title FROM task_sessions WHERE task_id = ?`, []any{into, from}},
 		{`DELETE FROM task_sessions WHERE task_id = ?`, []any{from}},
 		{`UPDATE reports SET task_id = ? WHERE task_id = ?`, []any{into, from}},
 		{`UPDATE task_log SET task_id = ? WHERE task_id = ?`, []any{into, from}},

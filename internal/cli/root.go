@@ -17,11 +17,27 @@ import (
 
 var Version = "dev"
 
+// Flavor is "dev" in builds made by `tars dev update` (set with -ldflags).
+// A dev build is named tars-dev and keeps its own database, so it runs next
+// to the released tars without touching its data.
+var Flavor = ""
+
+func isDev() bool { return Flavor == "dev" }
+
+// self is this binary's command name, for messages that tell someone what to run.
+func self() string {
+	if isDev() {
+		return "tars-dev"
+	}
+	return "tars"
+}
+
 type app struct {
 	st     *store.Store
 	json   bool
 	dbPath string
 	out    io.Writer
+	sh     shell // runs external commands for update; nil means the real shell
 }
 
 func (a *app) width() int {
@@ -44,10 +60,11 @@ func (a *app) emit(v any, human func() string) error {
 	return err
 }
 
-func NewRoot() *cobra.Command {
-	a := &app{}
+func NewRoot() *cobra.Command { return newRoot(&app{}) }
+
+func newRoot(a *app) *cobra.Command {
 	root := &cobra.Command{
-		Use:   "tars",
+		Use:   self(),
 		Short: "A task list you and your coding agent share",
 		Long: `TARS keeps your engineering tasks, Jira links, repo know-how and personal
 preferences in one place, so you can drive it yourself or through an agent.
@@ -58,10 +75,13 @@ Run with no arguments to open the interactive task list.`,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			a.out = cmd.OutOrStdout()
+			if cmd.Annotations["nodb"] != "" {
+				return nil
+			}
 			path := a.dbPath
 			if path == "" {
 				var err error
-				if path, err = store.DefaultPath(); err != nil {
+				if path, err = store.DefaultPathFor(isDev()); err != nil {
 					return err
 				}
 			}
@@ -95,8 +115,8 @@ Run with no arguments to open the interactive task list.`,
 		noteCmd(a), blockCmd(a), rmCmd(a),
 		reportCmd(a), answerCmd(a), sessionsCmd(a), seenCmd(a),
 		contextCmd(a),
-		repoCmd(a), profileCmd(a),
-		captureCmd(a), unfiledCmd(a), fileCmd(a), dismissCmd(a), linkCmd(a), mergeCmd(a), hookCmd(a),
+		repoCmd(a), profileCmd(a), todoCmd(a), usageCmd(a), updateCmd(a), devCmd(a),
+		captureCmd(a), unfiledCmd(a), capturedCmd(a), fileCmd(a), dismissCmd(a), linkCmd(a), unlinkCmd(a), mergeCmd(a), hookCmd(a),
 	)
 	return root
 }

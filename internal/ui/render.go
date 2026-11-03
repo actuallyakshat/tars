@@ -247,6 +247,18 @@ func reportLines(r *store.Report, width int) string {
 	return b.String()
 }
 
+// ThreadName is what a session did for a task, as Claude named it, else the
+// session's own title.
+func ThreadName(s store.TaskSession) string {
+	switch {
+	case s.Title != "":
+		return s.Title
+	case s.Name != "":
+		return s.Name
+	}
+	return "Unnamed session"
+}
+
 // Sessions lists Claude sessions with the command to reopen each one.
 func Sessions(ss []store.TaskSession) string {
 	if len(ss) == 0 {
@@ -254,11 +266,7 @@ func Sessions(ss []store.TaskSession) string {
 	}
 	var b strings.Builder
 	for _, s := range ss {
-		name := s.Name
-		if name == "" {
-			name = "Unnamed session"
-		}
-		b.WriteString("  " + Bold.Render(name) + Muted.Render("  "+Ago(s.LastAt)) + "\n")
+		b.WriteString("  " + Bold.Render(ThreadName(s)) + Muted.Render("  "+Ago(s.LastAt)) + "\n")
 		b.WriteString("  " + Accent.Render("claude --resume "+s.ID) + "\n")
 	}
 	return b.String()

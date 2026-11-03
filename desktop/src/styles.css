@@ -1,6 +1,6 @@
 /* tars for macOS
-   The site's tokens on a three-pane layout. Violet appears only for the ● and
-   focus. Status colours follow the TUI's palette (internal/ui/style.go); the
+   The site's tokens on a three-pane layout. Violet appears only for the ● and the Usage charts;
+   focus rings are ink. Status colours follow the TUI's palette (internal/ui/style.go); the
    light ones are a shade darker here so small text clears WCAG AA on every
    background, including the selected row. Every colour lives in the two token
    blocks below; src/theme.ts picks between them. */
@@ -126,7 +126,7 @@ textarea {
 }
 
 :focus-visible {
-  outline: 2px solid var(--signal);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -233,7 +233,7 @@ ol {
 
 .app {
   display: grid;
-  grid-template-columns: 208px minmax(340px, 1.1fr) minmax(380px, 1fr);
+  grid-template-columns: 240px minmax(340px, 1.1fr) minmax(380px, 1fr);
   height: 100%;
 }
 
@@ -838,11 +838,6 @@ ol {
   background: var(--page);
 }
 
-.report.asking {
-  border-color: var(--ask-line);
-  background: var(--ask-bg);
-}
-
 .report-head {
   display: flex;
   justify-content: space-between;
@@ -870,22 +865,72 @@ ol {
   color: var(--muted);
 }
 
-.report-lines dt.needs {
-  color: var(--s-progress);
-  font-weight: 550;
+.ask {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 
-.question {
-  font-weight: 550;
+.ask-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--signal);
 }
 
-.qa {
-  display: grid;
-  gap: 2px;
+.ask-label .muted {
+  margin-left: auto;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-.report > .primary,
-.report > .composer {
+.ask-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.ask-question {
+  margin: 6px 0 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+.ask-answer {
+  margin: 10px 0 0;
+  color: var(--ink);
+}
+
+.ask-answer::before {
+  content: "Your answer";
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ask.answered .ask-label {
+  color: var(--muted);
+}
+
+.ask.answered .ask-question {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+.ask > .primary,
+.ask > .ghost,
+.ask > .composer {
   margin-top: 12px;
 }
 
@@ -1787,6 +1832,8 @@ button kbd,
 }
 
 .palette-search {
+  /* Never squeezed by a long result list below it. */
+  flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1806,6 +1853,7 @@ button kbd,
 }
 
 .palette-list {
+  min-height: 0;
   margin: 0;
   padding: 6px;
   list-style: none;
@@ -2064,7 +2112,7 @@ button kbd,
 }
 
 .choice-card:has(input:focus-visible) {
-  outline: 2px solid var(--signal);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -2723,4 +2771,860 @@ button kbd,
   .switch-knob {
     transition: none;
   }
+}
+
+/* Why a session is on a task, and taking it off. */
+.session-via {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.session-unlink {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.session-unlink + .session-id {
+  margin-left: 4px;
+}
+
+/* ---------- todo lists ---------- */
+
+.todo-new-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 22px;
+}
+
+.todo-new-list input,
+.todo-rename input,
+.todo-edit input,
+.todo-add input {
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  min-width: 0;
+}
+
+.todo-new-list input {
+  flex: 1;
+  max-width: 360px;
+}
+
+.todo-new-list input:focus,
+.todo-rename input:focus,
+.todo-edit input:focus,
+.todo-add input:focus {
+  border-color: var(--ink-2);
+}
+
+.todo-new-list input[aria-invalid="true"],
+.todo-rename input[aria-invalid="true"],
+.todo-edit input[aria-invalid="true"],
+.todo-add input[aria-invalid="true"] {
+  border-color: var(--s-blocked);
+}
+
+.field-error {
+  flex-basis: 100%;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--s-blocked);
+}
+
+.todo-empty {
+  padding: 28px 0;
+}
+
+.todo-empty-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.todo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.todo-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 12px 12px 10px;
+}
+
+.todo-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin-bottom: 6px;
+}
+
+.todo-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.todo-count {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-card-actions,
+.todo-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 120ms var(--ease);
+}
+
+.todo-card-head:hover .todo-card-actions,
+.todo-card-head:focus-within .todo-card-actions,
+.todo-item:hover .todo-item-actions,
+.todo-item:focus-within .todo-item-actions {
+  opacity: 1;
+}
+
+.todo-icon {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.todo-icon:hover:not(:disabled) {
+  background: rgb(var(--tint) / 0.07);
+  color: var(--ink);
+}
+
+.todo-icon.danger-icon:hover:not(:disabled) {
+  color: var(--s-blocked);
+}
+
+.todo-icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.todo-rename,
+.todo-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.todo-rename input,
+.todo-edit input {
+  flex: 1;
+}
+
+.todo-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.todo-item:hover {
+  background: var(--surface-hover);
+}
+
+.todo-item input[type="checkbox"] {
+  accent-color: var(--ink);
+  flex: none;
+}
+
+.todo-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.todo-item.done .todo-text {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.todo-move-to {
+  height: 22px;
+  max-width: 96px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.todo-none {
+  font-size: 13px;
+  padding: 4px 4px 6px;
+}
+
+.todo-add {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.todo-add input {
+  flex: 1;
+  border-style: dashed;
+}
+
+.todo-clear {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.todo-card-head[draggable="true"],
+.todo-item[draggable="true"] {
+  cursor: grab;
+}
+
+.todo-card-head input,
+.todo-item input,
+.todo-item select,
+.todo-item button,
+.todo-card-head button {
+  cursor: auto;
+}
+
+.todo-card-head button,
+.todo-item button {
+  cursor: pointer;
+}
+
+.todo-card.dragging,
+.todo-item.dragging {
+  opacity: 0.4;
+}
+
+.todo-card.drop-target {
+  border-color: var(--ink-2);
+  border-radius: 0;
+}
+
+/* The drop line is a plain straight rule, square at both ends. */
+.todo-item {
+  position: relative;
+}
+
+.todo-item.drop-before,
+.todo-item.drop-after,
+.todo-item.dragging {
+  border-radius: 0;
+}
+
+.todo-item.drop-before::before,
+.todo-item.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--ink);
+  pointer-events: none;
+}
+
+.todo-item.drop-before::before {
+  top: -1px;
+}
+
+.todo-item.drop-after::after {
+  bottom: -1px;
+}
+
+/* ---------- notification bell and New badges ---------- */
+
+.brand-bell {
+  margin-left: auto;
+  font-family: var(--sans);
+  font-size: 13px;
+}
+
+.bell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.bell:hover,
+.bell.on {
+  background: rgb(var(--tint) / 0.07);
+  color: var(--ink);
+}
+
+.bell-dot {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--s-blocked);
+  box-shadow: 0 0 0 2px var(--side);
+}
+
+.bell-panel {
+  position: fixed;
+  z-index: 70;
+  width: 360px;
+  max-height: min(480px, 70vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 16px 40px -12px rgb(var(--shade) / 0.28), 0 2px 6px rgb(var(--shade) / 0.06);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.3;
+  outline: none;
+  animation: bell-in 0.14s var(--ease);
+}
+
+@keyframes bell-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.bell-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 11px 14px 9px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.bell-count {
+  font-size: 11.5px;
+  font-weight: 450;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bell-empty {
+  margin: 0;
+  padding: 22px 18px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.bell-list {
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.bell-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 10px 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.bell-item:hover,
+.bell-item:focus-visible {
+  background: rgb(var(--tint) / 0.05);
+  outline: none;
+}
+
+/* New ones carry a thin bar on the left, red like the bell's dot. */
+.bell-item.is-new::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--s-blocked);
+}
+
+.bell-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bell-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.bell-item:not(.is-new) .bell-title {
+  color: var(--ink-2);
+  font-weight: 450;
+}
+
+.bell-time {
+  margin-left: auto;
+  flex: none;
+  padding-left: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bell-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.bell-ref {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-2);
+}
+
+.bell-task {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bell-unfiled {
+  flex: 1 1 auto;
+  color: var(--s-progress);
+}
+
+.bell-repo {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(var(--tint) / 0.05);
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+
+.new-badge {
+  flex: none;
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(var(--tint) / 0.08);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  vertical-align: 2px;
+}
+
+.bell-row .new-badge {
+  margin-left: 0;
+}
+
+/* Usage: what Claude sessions cost. Every mark wears the app's violet
+   (--signal), one hue, so nothing leans on colour to tell series apart; text
+   stays in the text tokens. */
+.usage-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: -4px 0 14px;
+}
+
+.usage-controls > .ghost {
+  margin-left: auto;
+}
+
+.segmented button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Not .loading: that's the app's full-screen boot state. */
+.usage {
+  position: relative;
+}
+
+.usage-refreshing > :not(.usage-progress) {
+  opacity: 0.55;
+  transition: opacity 0.15s var(--ease);
+}
+
+/* A thin violet sweep along the top while transcripts are read. */
+.usage-progress {
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 1px;
+  overflow: hidden;
+  background: var(--well);
+}
+
+.usage-progress::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 30%;
+  border-radius: 1px;
+  background: var(--signal);
+  animation: usage-sweep 1.1s var(--ease) infinite;
+}
+
+@keyframes usage-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+
+.skeleton {
+  border-radius: 6px;
+  background: var(--well);
+  animation: usage-pulse 1.4s ease-in-out infinite;
+}
+
+.skeleton-value {
+  width: 60%;
+  height: 26px;
+  margin-top: 6px;
+}
+
+.skeleton-sub {
+  width: 80%;
+  height: 12px;
+  margin-top: 8px;
+}
+
+.skeleton-chart {
+  height: 160px;
+}
+
+@keyframes usage-pulse {
+  50% { opacity: 0.5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-progress::after,
+  .skeleton {
+    animation: none;
+  }
+}
+
+.usage-empty {
+  padding: 18px 0;
+}
+
+.usage-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.usage-error p {
+  margin: 0;
+  flex: 1;
+}
+
+.usage-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.usage-tile,
+.usage-card,
+.usage-chart {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.usage-tile {
+  padding: 12px 14px;
+}
+
+.usage-tile-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.usage-tile-value {
+  margin-top: 4px;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-tile-sub {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.usage-chart {
+  margin: 0 0 14px;
+  padding: 12px 14px 8px;
+}
+
+.usage-chart-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.usage-chart-plot {
+  position: relative;
+  height: 160px;
+}
+
+.usage-chart-plot svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.usage-chart-base {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.usage-bar {
+  fill: var(--signal);
+  opacity: 0.6;
+}
+
+.usage-bar.on {
+  opacity: 1;
+}
+
+.usage-tip {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgb(var(--shade) / 0.14);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.usage-tip span:first-of-type {
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-chart-axis {
+  position: relative;
+  height: 18px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.usage-chart-axis span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.usage-chart-axis span:first-child {
+  transform: none;
+  left: 0 !important;
+}
+
+.usage-chart-axis span:last-child:not(:first-child) {
+  transform: none;
+  left: auto !important;
+  right: 0;
+}
+
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.usage-card {
+  padding: 12px 14px 10px;
+  min-width: 0;
+}
+
+.usage-card-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+}
+
+.usage-table thead th {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  text-align: left;
+  padding: 0 0 4px;
+}
+
+.usage-table th[scope="row"] {
+  font-weight: 400;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 8px 6px 0;
+}
+
+.usage-table td {
+  padding: 6px 0 6px 8px;
+  width: 78px;
+}
+
+.usage-table tbody tr + tr > * {
+  border-top: 1px solid var(--line);
+}
+
+.usage-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-table thead th.num {
+  width: 78px;
+}
+
+.usage-open {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.usage-share {
+  display: block;
+  height: 3px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--well);
+  overflow: hidden;
+}
+
+.usage-share span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--signal);
+  opacity: 0.75;
+}
+
+.usage-more {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.usage-sources {
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 80ch;
+}
+
+.usage-sources p {
+  margin: 0 0 4px;
+}
+
+.task-cost {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+}
+
+.task-cost-value {
+  color: var(--ink);
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
 }

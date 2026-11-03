@@ -117,7 +117,7 @@ func (m *inbox) fileCapture(val string, newTask bool) bool {
 		}
 	}
 	s := claude.Inspect(claude.ConfigDir(), c.SessionID)
-	if err := m.st.FileCapture(c, t, s.Name, s.LaunchDir); err != nil {
+	if err := m.st.FileCapture(c, t, s.Name, s.LaunchDir, store.ViaUser); err != nil {
 		m.setErr(err)
 		return false
 	}

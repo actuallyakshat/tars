@@ -74,7 +74,7 @@ func TestCaptureLinksByBranchAndRecordsIt(t *testing.T) {
 	dir := gitRepo(t, "tars/1-retry")
 
 	out := e.hook("prompt", hookJSON("s1", dir, "keep going", ""))
-	if !strings.Contains(out, "linked to task #1") || !strings.Contains(out, "tars report 1") {
+	if !strings.Contains(out, "linked to task #1") || !strings.Contains(out, "tars report 1") || !strings.Contains(out, `tars link 1 --thread`) {
 		t.Fatalf("context: %q", out)
 	}
 	// Only the first prompt does anything.
@@ -86,14 +86,90 @@ func TestCaptureLinksByBranchAndRecordsIt(t *testing.T) {
 		t.Fatalf("task after link: %+v", tk)
 	}
 
-	// A second thread on a plain branch recorded on the task matches it too.
-	other := gitRepo(t, "feat/webhooks")
-	e.ok("edit", "1", "--branch", "feat/webhooks")
-	if out := e.hook("prompt", hookJSON("s2", other, "next part", "")); !strings.Contains(out, "#1") {
-		t.Fatalf("second thread: %q", out)
+	if tk.Sessions[0].Via != store.ViaBranch {
+		t.Fatalf("via: %+v", tk.Sessions[0])
 	}
-	if tk := e.task("1"); len(tk.Sessions) != 2 {
-		t.Fatalf("sessions: %+v", tk.Sessions)
+}
+
+// The incident: three sessions in the main checkout while it sat on a
+// branch recorded on #1. Only one was that work. The branch is a hint for
+// Claude to judge, never a link on its own; "#2" in the prompt is a hint too,
+// and "PR #190" is GitHub's, not a task.
+func TestBranchInMainCheckoutIsOnlyAHint(t *testing.T) {
+	e := newCaptureEnv(t)
+	e.ok("add", "Promotion workbook v3 flat upload", "-r", "billing")
+	e.ok("add", "KPI dashboard", "-r", "billing")
+	e.ok("edit", "1", "--branch", "feat/workbook-v3")
+	dir := gitRepo(t, "feat/workbook-v3")
+
+	out := e.hook("prompt", hookJSON("s1", dir, "blank outlet array in promotions", ""))
+	if !strings.Contains(out, "#1 Promotion workbook v3") || !strings.Contains(out, "other work happens here too") ||
+		!strings.Contains(out, "without asking them") || strings.Contains(out, "linked to task") {
+		t.Fatalf("branch should be a hint for Claude:\n%s", out)
+	}
+	if tk := e.task("1"); len(tk.Sessions) != 0 {
+		t.Fatalf("linked on the branch alone: %+v", tk.Sessions)
+	}
+
+	out = e.hook("prompt", hookJSON("s2", dir, "PR of #2 was https://github.com/acme/kpi/pull/190, see PR #190", ""))
+	if !strings.Contains(out, "#2 KPI dashboard [inbox]: the prompt mentions #2") || strings.Contains(out, "#190") {
+		t.Fatalf("mention hint:\n%s", out)
+	}
+	if strings.Index(out, "#2 KPI") > strings.Index(out, "#1 Promotion") {
+		t.Fatalf("a task named in the prompt should come first:\n%s", out)
+	}
+
+	// Claude judged s1 to be other work and didn't link; s2 it links to #2.
+	if !strings.Contains(out, `link <id> --thread "…"`) {
+		t.Fatalf("Claude should be asked to name the thread:\n%s", out)
+	}
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "s2")
+	e.ok("link", "2", "--thread", "Record  PR 190 on the dashboard")
+	if tk := e.task("2"); len(tk.Sessions) != 1 || tk.Sessions[0].Via != store.ViaClaude || tk.Sessions[0].Title != "Record PR 190 on the dashboard" {
+		t.Fatalf("claude link: %+v", tk.Sessions)
+	}
+	// A report can rename the thread once the work is done; names stay short.
+	e.ok("report", "2", "--done", "linked PR", "--thread", "Linked PR 190")
+	if tk := e.task("2"); tk.Sessions[0].Title != "Linked PR 190" {
+		t.Fatalf("report rename: %+v", tk.Sessions)
+	}
+	e.fails("link", "2", "--thread", strings.Repeat("long ", 20))
+}
+
+func TestUnlinkSendsASessionBackToUnfiled(t *testing.T) {
+	e := newCaptureEnv(t)
+	e.ok("add", "Retry webhooks")
+	e.ok("add", "Other")
+	dir := gitRepo(t, "tars/1-retry")
+	worked := transcript(t, editCall)
+	e.hook("prompt", hookJSON("abcd1234", dir, "unrelated thing", worked))
+	e.hook("end", hookJSON("abcd1234", dir, "", worked))
+	if c := capture(t, e, "abcd1234"); c.State != store.CaptureLinked {
+		t.Fatalf("capture: %+v", c)
+	}
+
+	e.ok("unlink", "abcd")
+	if tk := e.task("1"); len(tk.Sessions) != 0 {
+		t.Fatalf("still linked: %+v", tk.Sessions)
+	}
+	list := decode[[]store.Capture](t, e.ok("unfiled", "--json"))
+	if len(list) != 1 || list[0].SessionID != "abcd1234" {
+		t.Fatalf("unfiled: %+v", list)
+	}
+	e.fails("unlink", "abcd")
+
+	// On two tasks, it needs --task; then it stays on the other.
+	e.ok("file", "abcd", "1")
+	e.ok("file", "abcd", "2")
+	if err := e.fails("unlink", "abcd"); !strings.Contains(err.Error(), "--task") {
+		t.Fatalf("want --task error: %v", err)
+	}
+	e.ok("unlink", "abcd", "--task", "1")
+	if c := capture(t, e, "abcd1234"); c.State != store.CaptureLinked || c.TaskID != 2 {
+		t.Fatalf("should stay on #2: %+v", c)
+	}
+	if tk := e.task("2"); tk.Sessions[0].Via != store.ViaUser {
+		t.Fatalf("via: %+v", tk.Sessions)
 	}
 }
 
@@ -123,7 +199,7 @@ func TestCaptureAsksWhenOnlyWordsMatch(t *testing.T) {
 	if !strings.Contains(out, "#1 Retry failed webhooks") || strings.Contains(out, "#2") || strings.Contains(out, "#3") {
 		t.Fatalf("candidates: %q", out)
 	}
-	if !strings.Contains(out, "tars link <id>") {
+	if !strings.Contains(out, "tars link <id>") || !strings.Contains(out, "shares words") {
 		t.Fatalf("no instruction: %q", out)
 	}
 	// Commands from the plugin link themselves: no question.
@@ -248,4 +324,33 @@ func TestSettleSeesShellEditsThroughGit(t *testing.T) {
 	if c := capture(t, e, "s2"); c.State != store.CaptureDropped {
 		t.Fatalf("read-only session: %+v", c)
 	}
+}
+
+func TestCapturedListsLinkedAndUnfiled(t *testing.T) {
+	e := newCaptureEnv(t)
+	e.ok("add", "Retry webhooks")
+	worked := transcript(t, editCall)
+	linked := gitRepo(t, "tars/1-retry")
+	e.hook("prompt", hookJSON("aaaa1111", linked, "retry webhooks", worked))
+	e.hook("end", hookJSON("aaaa1111", linked, "", worked))
+	other := gitRepo(t, "main")
+	e.hook("prompt", hookJSON("bbbb2222", other, "something else", worked))
+	e.hook("end", hookJSON("bbbb2222", other, "", worked))
+	e.hook("prompt", hookJSON("cccc3333", other, "just a question", transcript(t)))
+	e.hook("end", hookJSON("cccc3333", other, "", transcript(t)))
+
+	list := decode[[]store.Capture](t, e.ok("captured", "--json"))
+	states := map[string]string{}
+	for _, c := range list {
+		states[c.SessionID] = c.State
+	}
+	if len(list) != 2 || states["aaaa1111"] != store.CaptureLinked || states["bbbb2222"] != store.CaptureUnfiled {
+		t.Fatalf("captured: %+v", list)
+	}
+
+	e.ok("dismiss", "bbbb")
+	if list := decode[[]store.Capture](t, e.ok("captured", "--json")); len(list) != 1 || list[0].TaskID != 1 {
+		t.Fatalf("after dismiss: %+v", list)
+	}
+	e.fails("captured", "--days", "0")
 }
