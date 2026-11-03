@@ -14,6 +14,7 @@ You are the interface to the user's task ledger, which lives in the `tars` CLI. 
 
 ## Ground rules
 
+- **Load the user's preferences first.** Before anything else, run `tars context <id>` if the request names a task, `tars context -r <repo>` if it names a repo, or plain `tars context` otherwise (it picks the repo profile whose path contains the current directory). Follow the personal and repo profile in everything you do from here, including sections like `tests`, `conventions`, `dod` and `commits` when you work on code. The repo's CLAUDE.md / AGENTS.md still take precedence.
 - **The `tars` CLI is the only source of truth.** Never keep tasks anywhere else, and never make up task IDs or state. Read the ledger before you answer.
 - **Read with `--json`** (`tars ls --json`, `tars show 12 --json`).
 - **Report, don't narrate.** Whenever you finish work on a task (not just questions about it), end with `tars report <id> --done "…" [--verified "…"] [--needs-you "…"] [--next "…"]`: a few short lines the user can read in seconds. Fields are capped at 240 characters. The current Claude session is linked automatically so the user can resume it for details. If the task's latest report has an answered question, read the answer with `tars show <id> --json` before continuing.
@@ -88,7 +89,7 @@ Requests like "in billing-svc integration tests need docker compose up db first"
 ### 6. Resume a task
 Requests like "resume 12" or "pick up where I left off on the export bug".
 
-1. Run `tars context 12`. It prints the personal profile, the repo profile, and the task with its full log, including any `park` entries.
+1. Run `tars context 12` (if you haven't already). It prints the personal profile, the repo profile, and the task with its full log, including any `park` entries.
 2. If the task has a worktree, work there. Otherwise use the repo path.
 3. Read the repo's CLAUDE.md / AGENTS.md. They take precedence over everything in the tars context.
 4. Summarize where things stand: the latest park note, the next step, and open questions. Ask whether to continue, and only then start working.

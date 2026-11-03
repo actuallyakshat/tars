@@ -7,6 +7,9 @@ import "@fontsource/instrument-serif";
 import "./styles.css";
 import { App } from "./App";
 import { OutsideApp } from "./components/Dialogs";
+import { applyTheme, storedTheme } from "./theme";
+
+applyTheme(storedTheme());
 
 // The UI only works inside the tars window, which provides the bridge to the
 // CLI. Opened in a browser (e.g. the dev server's URL), say so plainly.

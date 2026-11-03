@@ -9,18 +9,16 @@ export interface View {
 const only = (...statuses: Status[]) => (t: Task) => statuses.includes(t.status);
 
 export const VIEWS: View[] = [
+  { name: "All", has: () => true },
   { name: "Needs you", has: (t) => !!t.needs_you && t.status !== "done" },
-  { name: "Open", has: (t) => t.status !== "done" },
-  { name: "Inbox", has: only("inbox") },
-  { name: "Ready", has: only("ready") },
-  { name: "Review", has: only("in-review") },
-  { name: "Blocked", has: only("blocked") },
+  { name: "Active", has: (t) => t.status !== "done" },
   { name: "Done", has: only("done") },
 ];
 
-export const NEEDS_YOU = 0;
-export const OPEN = 1;
-export const DONE = VIEWS.length - 1;
+export const ALL = 0;
+export const NEEDS_YOU = 1;
+export const ACTIVE = 2;
+export const DONE = 3;
 
 export const STATUSES: Status[] = ["inbox", "ready", "in-progress", "in-review", "blocked", "done"];
 
@@ -49,9 +47,14 @@ export function counts(tasks: Task[]) {
   });
 }
 
-/** The view to open on: Needs you when it has anything, otherwise Open. */
+// The status view a task lives in: Active or Done.
+export function viewOf(t: Task) {
+  return t.status === "done" ? DONE : ACTIVE;
+}
+
+/** The view to open on: Needs you when it has anything, otherwise Active. */
 export function defaultView(tasks: Task[]) {
-  return tasks.some(VIEWS[NEEDS_YOU].has) ? NEEDS_YOU : OPEN;
+  return tasks.some(VIEWS[NEEDS_YOU].has) ? NEEDS_YOU : ACTIVE;
 }
 
 export interface Group {

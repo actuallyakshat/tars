@@ -1,28 +1,28 @@
-import { DONE, OPEN, ago, counts, defaultView, dueText, flatten, groupTasks, jiraUrl, openQuestion } from "./model";
+import { ACTIVE, DONE, NEEDS_YOU, ago, counts, defaultView, dueText, flatten, groupTasks, jiraUrl, openQuestion } from "./model";
 import { sampleTasks } from "./test/backend";
 
 const now = new Date(2026, 9, 30, 12, 0, 0); // Fri Oct 30 2026
 
 describe("model", () => {
-  it("counts views like the TUI: Review is in-review only, Open is everything not done", () => {
-    expect(counts(sampleTasks()).map((c) => c.total)).toEqual([1, 4, 0, 1, 1, 1, 1]);
-    expect(counts(sampleTasks()).map((c) => c.unread)).toEqual([1, 2, 0, 1, 0, 0, 0]);
+  it("counts views like the TUI: All, Needs you, Active (not done), Done", () => {
+    expect(counts(sampleTasks()).map((c) => c.total)).toEqual([5, 1, 4, 1]);
+    expect(counts(sampleTasks()).map((c) => c.unread)).toEqual([2, 1, 2, 0]);
   });
 
   it("opens on Needs you only when it has tasks", () => {
-    expect(defaultView(sampleTasks())).toBe(0);
-    expect(defaultView(sampleTasks().map((t) => ({ ...t, needs_you: false })))).toBe(OPEN);
+    expect(defaultView(sampleTasks())).toBe(NEEDS_YOU);
+    expect(defaultView(sampleTasks().map((t) => ({ ...t, needs_you: false })))).toBe(ACTIVE);
   });
 
   it("orders by priority, then due date (undated last), then id", () => {
-    const base = { status: "inbox" as const, created_at: "", updated_at: "" };
+    const base = { status: "in-progress" as const, created_at: "", updated_at: "" };
     const tasks = [
       { ...base, id: 1, title: "a", priority: 2 },
       { ...base, id: 2, title: "b", priority: 2, due: "2026-11-02" },
       { ...base, id: 3, title: "c", priority: 0 },
       { ...base, id: 4, title: "d", priority: 2, due: "2026-11-01" },
     ];
-    const groups = groupTasks(tasks, OPEN);
+    const groups = groupTasks(tasks, ACTIVE);
     expect(groups.map((g) => g.label)).toEqual(["Urgent", "Normal"]);
     expect(flatten(groups).map((t) => t.id)).toEqual([3, 4, 2, 1]);
   });

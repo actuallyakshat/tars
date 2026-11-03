@@ -17,10 +17,11 @@ Capture the state of the current session on a task so that work can resume later
    - Otherwise, if the current branch looks like `tars/<id>-…`, use that ID.
    - Otherwise, search with `tars ls -q <keyword> --json` using terms from this conversation.
    - If it's still ambiguous, ask the user. If no task exists, offer to create one with `tars add`.
-2. **Gather state:**
+2. **Load preferences:** run `tars context <id>` for the personal profile, the repo profile and the task's log so far. Follow them when writing the note.
+3. **Gather state:**
    - `git rev-parse --show-toplevel`, the current branch, `git status --short`, `git diff --stat`, and `git log --oneline -5`.
    - From this conversation: the goal, what's done, decisions made and why, approaches that failed, what's left, and the exact next step.
-3. **Save it** as a park note:
+4. **Save it** as a park note:
 
    ```bash
    tars note <id> -k park - <<'EOF'
@@ -35,9 +36,9 @@ Capture the state of the current session on a task so that work can resume later
    EOF
    ```
 
-4. If the branch or worktree isn't recorded on the task yet, run `tars edit <id> --branch <b> --worktree <toplevel>`. If the branch has an open pull request (`gh pr view --json url -q .url`, when `gh` is available) and the task has no `pr`, add `--pr <url>`.
-5. Don't change the status unless the user says so. Parking isn't blocking.
-6. Confirm in one line: "Parked #<id>. Resume with `/tars:tars resume <id>`."
+5. If the branch or worktree isn't recorded on the task yet, run `tars edit <id> --branch <b> --worktree <toplevel>`. If the branch has an open pull request (`gh pr view --json url -q .url`, when `gh` is available) and the task has no `pr`, add `--pr <url>`.
+6. Don't change the status unless the user says so. Parking isn't blocking.
+7. Confirm in one line: "Parked #<id>. Resume with `/tars:tars resume <id>`."
 
 Don't commit, stash, or discard anything. Parking only records state.
 

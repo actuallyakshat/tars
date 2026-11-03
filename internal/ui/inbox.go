@@ -42,22 +42,21 @@ var (
 
 type view struct {
 	name     string
-	statuses []string // nil = every open (not done) task
+	statuses []string // nil means every status
 	needsYou bool     // only tasks with an unanswered agent question
 }
 
 const (
-	viewNeedsYou = 0
-	viewOpen     = 1
+	viewAll      = 0
+	viewNeedsYou = 1
+	viewActive   = 2
+	viewDone     = 3
 )
 
 var views = []view{
+	{name: "All"},
 	{name: "Needs you", needsYou: true},
-	{"Open", nil, false},
-	{"Inbox", []string{store.StatusInbox}, false},
-	{"Ready", []string{store.StatusReady}, false},
-	{"Review", []string{store.StatusInReview}, false},
-	{"Blocked", []string{store.StatusBlocked}, false},
+	{"Active", []string{store.StatusInbox, store.StatusReady, store.StatusInProgress, store.StatusInReview, store.StatusBlocked}, false},
 	{"Done", []string{store.StatusDone}, false},
 }
 
@@ -66,7 +65,7 @@ func (v view) has(t *store.Task) bool {
 		return t.NeedsYou && t.Status != store.StatusDone
 	}
 	if v.statuses == nil {
-		return t.Status != store.StatusDone
+		return true
 	}
 	for _, s := range v.statuses {
 		if t.Status == s {
@@ -220,7 +219,7 @@ func newInbox(st *store.Store) (*inbox, error) {
 	ti := textinput.New()
 	ti.Prompt = ""
 	ti.CharLimit = 500
-	m := &inbox{st: st, now: time.Now, input: ti, vp: viewport.New(0, 0), view: viewOpen, copy: clipboard.WriteAll}
+	m := &inbox{st: st, now: time.Now, input: ti, vp: viewport.New(0, 0), view: viewActive, copy: clipboard.WriteAll}
 	if err := m.reload(); err != nil {
 		return nil, err
 	}
@@ -299,7 +298,7 @@ func (m *inbox) rebuild(keep int64) {
 		if a.t.Due != b.t.Due {
 			return a.t.Due < b.t.Due
 		}
-		if m.view == len(views)-1 { // Done: most recently finished first
+		if m.view == viewDone { // Done: most recently finished first
 			return a.t.DoneAt > b.t.DoneAt
 		}
 		return a.t.ID < b.t.ID
@@ -523,7 +522,7 @@ func (m *inbox) updateList(msg tea.KeyMsg) tea.Cmd {
 		m.setView(m.view + 1)
 	case "shift+tab":
 		m.setView(m.view - 1)
-	case "1", "2", "3", "4", "5", "6", "7":
+	case "1", "2", "3", "4":
 		m.setView(int(key[0] - '1'))
 	case "g":
 		m.group = (m.group + 1) % groupingCount
@@ -653,7 +652,7 @@ func (m *inbox) submitInput() {
 		}
 		m.endInput()
 		if !views[m.view].has(t) {
-			m.setView(viewOpen)
+			m.setView(viewActive)
 		}
 		m.query = ""
 		if err := m.reload(); err != nil {
@@ -856,7 +855,7 @@ func (m *inbox) topBar() string {
 		left += st.Render(label)
 		// A space before the dot, and the same slot reserved when there is no
 		// dot, so tabs neither crowd it nor shift when it appears.
-		if m.unread[i] > 0 && i != len(views)-1 {
+		if m.unread[i] > 0 && i != viewDone {
 			left += " " + unreadSt.Render("●")
 		} else {
 			left += "  "
@@ -939,8 +938,8 @@ func (m *inbox) listView(width, height int) string {
 			msg = fmt.Sprintf("No tasks match %q. esc clears the search.", m.query)
 		case m.view == viewNeedsYou:
 			msg = "Nothing needs you. When an agent gets stuck, its question shows up here."
-		case m.counts[viewOpen] == 0 && m.view == viewOpen:
-			msg = "No open tasks. Press c to add one."
+		case m.view == viewActive:
+			msg = "Nothing active."
 		}
 		return "\n  " + Muted.Render(msg)
 	}
@@ -1216,7 +1215,7 @@ func helpView(width, height int) string {
 		}
 		return b.String()
 	}
-	nav := section{"Navigate", []string{"↑↓ j k", "move", "home end", "first / last", "tab ⇧tab", "next / previous view", "1–7", "jump to view", "enter", "open / close details", "esc ← h", "back, clear search"}}
+	nav := section{"Navigate", []string{"↑↓ j k", "move", "home end", "first / last", "tab ⇧tab", "next / previous view", "1–4", "jump to view", "enter", "open / close details", "esc ← h", "back, clear search"}}
 	details := section{"Details", []string{"↑↓ pgup pgdn", "scroll", "j k", "next / previous task", "l", "expand / collapse activity"}}
 	act := section{"Selected task", []string{"a", "answer the agent's question", "o", "copy claude --resume command", "x", "done (again: reopen)", "s", "change status", "p", "change priority", "n", "add a note", "u", "undo last change"}}
 	list := section{"List", []string{"c", "new task (quick add)", "/", "search", "g", "group: priority · due · status · repo", "r", "refresh", "q", "quit"}}

@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { Task } from "../api";
-import { type Group, type GroupBy, type SortBy, GROUPINGS, NEEDS_YOU, OPEN, SORTS, STATUS, VIEWS, ago, dueText, prLabel, priorityMark } from "../model";
+import { type Group, type GroupBy, type SortBy, GROUPINGS, ACTIVE, NEEDS_YOU, SORTS, STATUS, VIEWS, ago, dueText, prLabel, priorityMark } from "../model";
 import { PreviewToggle, SidebarToggle } from "./Panes";
 
 interface Props {
   groups: Group[];
   view: number;
-  totalOpen: number;
   selectedId: number | null;
   now: Date;
   query: string;
@@ -21,14 +20,14 @@ interface Props {
   onOpenUrl: (url: string) => void;
 }
 
-function emptyMessage(view: number, totalOpen: number, query: string) {
+function emptyMessage(view: number, query: string) {
   if (query.trim()) return `No tasks here match “${query.trim()}”. Esc clears the search.`;
   if (view === NEEDS_YOU) return "Nothing needs you. When an agent gets stuck, its question shows up here.";
-  if (view === OPEN && totalOpen === 0) return "No open tasks. Press c to add one.";
+  if (view === ACTIVE) return "Nothing active.";
   return "Nothing here.";
 }
 
-export function TaskList({ groups, view, totalOpen, selectedId, now, query, group, sort, onQuery, onGroup, onSort, onSelect, onOpen, onMenu, onOpenUrl }: Props) {
+export function TaskList({ groups, view, selectedId, now, query, group, sort, onQuery, onGroup, onSort, onSelect, onOpen, onMenu, onOpenUrl }: Props) {
   const selRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
     selRef.current?.scrollIntoView?.({ block: "nearest" });
@@ -45,7 +44,7 @@ export function TaskList({ groups, view, totalOpen, selectedId, now, query, grou
         <PreviewToggle />
       </header>
       {groups.length === 0 ? (
-        <p className="empty">{emptyMessage(view, totalOpen, query)}</p>
+        <p className="empty">{emptyMessage(view, query)}</p>
       ) : (
         <div className="list-scroll">
           {groups.map((g) => (

@@ -1,9 +1,9 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App, REFRESH_MS, RETRY_MS } from "./App";
-import { fakeBackend, sampleTasks } from "./test/backend";
+import { fakeBackend, openTasks, sampleTasks } from "./test/backend";
 
-const views = ["Needs you", "Open", "Inbox", "Ready", "Review", "Blocked", "Done"];
+const views = ["All", "Needs you", "Active", "Done"];
 
 async function boot() {
   const user = userEvent.setup();
@@ -21,40 +21,40 @@ describe("sidebar", () => {
   it("shows every view with its count and opens on Needs you when an agent is waiting", async () => {
     fakeBackend();
     await boot();
-    expect(views.map((_, i) => count(i))).toEqual(["1", "4", "0", "1", "1", "1", "1"]);
+    expect(views.map((_, i) => count(i))).toEqual(["5", "1", "4", "1"]);
     for (const v of views) expect(sidebar().getByRole("button", { name: new RegExp(`^${v}`) })).toBeInTheDocument();
     expect(heading()).toBe("Needs you");
     expect(sidebar().getByRole("button", { name: /^Needs you/ })).toHaveAttribute("aria-current", "page");
   });
 
-  it("opens on Open when nothing needs you", async () => {
+  it("opens on Active when nothing needs you", async () => {
     fakeBackend(sampleTasks().filter((t) => !t.needs_you));
     await boot();
-    expect(heading()).toBe("Open");
-    expect(count(0)).toBe("0");
+    expect(heading()).toBe("Active");
+    expect(count(1)).toBe("0");
   });
 
   it("marks views holding agent updates with a dot, except Done", async () => {
     fakeBackend();
     await boot();
-    expect(sidebar().getByRole("button", { name: /^Open/ })).toHaveTextContent("●");
-    expect(sidebar().getByRole("button", { name: /^Inbox/ })).not.toHaveTextContent("●");
+    expect(sidebar().getByRole("button", { name: /^Active/ })).toHaveTextContent("●");
+    expect(sidebar().getByRole("button", { name: /^Done/ })).not.toHaveTextContent("●");
   });
 
   it("switches views by number key", async () => {
     fakeBackend();
     const user = await boot();
-    await user.keyboard("6");
-    expect(heading()).toBe("Blocked");
+    await user.keyboard("3");
+    expect(heading()).toBe("Active");
     expect(screen.getByTestId("row-2")).toHaveTextContent("waiting on Rahul");
   });
 });
 
 describe("task list", () => {
   it("groups by priority and shows the markers", async () => {
-    const b = fakeBackend();
+    const b = fakeBackend(openTasks());
     const user = await boot();
-    await user.keyboard("2");
+    await user.keyboard("3");
     const groups = screen.getAllByRole("listbox").map((l) => l.getAttribute("aria-label"));
     expect(groups).toEqual(["Urgent", "High", "Normal", "Low"]);
 
@@ -73,13 +73,13 @@ describe("task list", () => {
     expect(unread).toHaveClass("unread");
     expect(screen.getByTestId("row-2")).not.toHaveClass("unread");
     expect(screen.getByTestId("row-4")).toHaveTextContent("2d late");
-    expect(screen.queryByTestId("row-5")).toBeNull(); // done stays out of Open
+    expect(screen.queryByTestId("row-5")).toBeNull(); // done stays out of Active
   });
 
   it("marks a task seen when it is selected, clearing its ●", async () => {
-    const b = fakeBackend();
+    const b = fakeBackend(openTasks());
     const user = await boot();
-    await user.keyboard("2");
+    await user.keyboard("3");
     const row = screen.getByTestId("row-3");
     expect(row).toHaveTextContent("●");
     expect(row).toHaveClass("unread");
@@ -99,11 +99,11 @@ describe("task list", () => {
   it("moves with j/k and keeps the selection across refreshes", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      const b = fakeBackend();
+      const b = fakeBackend(openTasks());
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       render(<App />);
       await screen.findByRole("navigation", { name: "Views" });
-      await user.keyboard("2");
+      await user.keyboard("3");
       expect(screen.getByTestId("row-2")).toHaveAttribute("aria-selected", "true");
       await user.keyboard("jj");
       expect(screen.getByTestId("row-4")).toHaveAttribute("aria-selected", "true");
@@ -111,13 +111,13 @@ describe("task list", () => {
       expect(screen.getByTestId("row-1")).toHaveAttribute("aria-selected", "true");
 
       // An agent adds an urgent task, which lands above the selection.
-      b.tasks.push({ id: 6, title: "Hotfix login", status: "inbox", priority: 0, created_at: "", updated_at: "", unread: true });
+      b.tasks.push({ id: 6, title: "Hotfix login", status: "in-progress", priority: 0, created_at: "", updated_at: "", unread: true });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(REFRESH_MS + 10);
       });
       expect(await screen.findByTestId("row-6")).toBeInTheDocument();
       expect(screen.getByTestId("row-1")).toHaveAttribute("aria-selected", "true");
-      expect(count(1)).toBe("5");
+      expect(count(2)).toBe("5");
     } finally {
       vi.useRealTimers();
     }
@@ -126,8 +126,8 @@ describe("task list", () => {
   it("shows empty states", async () => {
     fakeBackend([]);
     const user = await boot();
-    expect(screen.getByText("No open tasks. Press c to add one.")).toBeInTheDocument();
-    await user.keyboard("1");
+    expect(screen.getByText("Nothing active.")).toBeInTheDocument();
+    await user.keyboard("2");
     expect(screen.getByText(/Nothing needs you/)).toBeInTheDocument();
     expect(detail().getByText(/Select a task/)).toBeInTheDocument();
   });
@@ -200,10 +200,10 @@ describe("actions", () => {
 
     expect(b.callsTo("answer_task")).toEqual([{ id: 1, text: "billing-alerts" }]);
     expect(await screen.findByRole("status")).toHaveTextContent("Answered #1");
-    await waitFor(() => expect(count(0)).toBe("0"));
+    await waitFor(() => expect(count(1)).toBe("0"));
     // The answered task leaves Needs you; the asked and answered question stays on the task.
     expect(screen.getByText(/Nothing needs you/)).toBeInTheDocument();
-    await user.keyboard("2");
+    await user.keyboard("3");
     await user.click(screen.getByTestId("row-1"));
     const report = within(await detail().findByRole("region", { name: "Report" }));
     expect(report.getByText("Alert #oncall or #billing-alerts?")).toBeInTheDocument();
@@ -225,29 +225,29 @@ describe("actions", () => {
   });
 
   it("marks done with x, reopens, and changes status from the picker", async () => {
-    const b = fakeBackend();
+    const b = fakeBackend(openTasks());
     const user = await boot();
-    await user.keyboard("2");
+    await user.keyboard("3");
     await user.click(screen.getByTestId("row-3"));
     await user.keyboard("x");
     expect(b.callsTo("set_status")).toEqual([{ id: 3, status: "done" }]);
-    await waitFor(() => expect(count(6)).toBe("2"));
+    await waitFor(() => expect(count(3)).toBe("2"));
     expect(screen.queryByTestId("row-3")).toBeNull();
     // The selection moves to the task that took its place.
     await waitFor(() => expect(screen.getByTestId("row-4")).toHaveAttribute("aria-selected", "true"));
 
-    await user.keyboard("7");
+    await user.keyboard("4");
     await user.click(screen.getByTestId("row-3"));
     await user.click(detail().getByRole("button", { name: "Reopen" }));
     expect(b.callsTo("set_status")[1]).toEqual({ id: 3, status: "inbox" });
-    await waitFor(() => expect(count(2)).toBe("1"));
+    await waitFor(() => expect(count(2)).toBe("4"));
 
-    await user.keyboard("2");
+    await user.keyboard("3");
     await user.click(screen.getByTestId("row-4"));
     await user.click(detail().getByRole("button", { name: /^Status:/ }));
     await user.click(within(screen.getByRole("listbox", { name: "Status" })).getByRole("option", { name: "Blocked" }));
     expect(b.callsTo("set_status")[2]).toEqual({ id: 4, status: "blocked" });
-    await waitFor(() => expect(count(5)).toBe("2"));
+    await waitFor(() => expect(within(screen.getByTestId("row-4")).getByTitle("Blocked")).toBeInTheDocument());
     expect(screen.queryByRole("listbox", { name: "Status" })).toBeNull();
 
     // From the keyboard: s opens the menu, arrows move, Enter chooses.
@@ -258,7 +258,7 @@ describe("actions", () => {
     expect(b.callsTo("set_status")[3]).toEqual({ id: 4, status: "done" });
 
     // Esc closes the menu without changing anything.
-    await user.keyboard("2");
+    await user.keyboard("3");
     await user.click(screen.getByTestId("row-2"));
     await user.click(detail().getByRole("button", { name: /^Status:/ }));
     await user.keyboard("{Escape}");
@@ -282,7 +282,7 @@ describe("actions", () => {
   it("adds a task from the new task page", async () => {
     const b = fakeBackend();
     const user = await boot();
-    await user.keyboard("2");
+    await user.keyboard("3");
     await user.click(sidebar().getByRole("button", { name: /New task/ }));
     const page = within(screen.getByRole("main", { name: "New task" }));
     expect(page.getByRole("textbox", { name: "Title" })).toHaveFocus();
@@ -555,13 +555,13 @@ describe("command palette", () => {
 
 describe("grouping, sorting and filtering", () => {
   it("groups by status from the display menu, cycles with g, and remembers it", async () => {
-    fakeBackend();
+    fakeBackend(openTasks());
     const user = await boot();
-    await user.keyboard("2");
+    await user.keyboard("3");
     await user.click(screen.getByRole("button", { name: "Display options" }));
     await user.click(screen.getByRole("radio", { name: "Status" }));
     const groups = () => screen.getAllByRole("listbox").map((l) => l.getAttribute("aria-label"));
-    expect(groups()).toEqual(["In review", "In progress", "Ready", "Blocked"]);
+    expect(groups()).toEqual(["In progress"]);
     expect(localStorage.getItem("tars.groupBy")).toBe("status");
     await user.click(document.body);
     await user.keyboard("g");
@@ -571,9 +571,9 @@ describe("grouping, sorting and filtering", () => {
   });
 
   it("sorts by title", async () => {
-    fakeBackend();
+    fakeBackend(openTasks());
     const user = await boot();
-    await user.keyboard("2");
+    await user.keyboard("3");
     await user.click(screen.getByRole("button", { name: "Display options" }));
     await user.click(screen.getByRole("radio", { name: "No grouping" }));
     await user.click(screen.getByRole("radio", { name: "Title" }));
@@ -582,9 +582,9 @@ describe("grouping, sorting and filtering", () => {
   });
 
   it("filters the list with / and clears with Esc", async () => {
-    fakeBackend();
+    fakeBackend(openTasks());
     const user = await boot();
-    await user.keyboard("2/csv");
+    await user.keyboard("3/csv");
     expect(screen.getByRole("textbox", { name: "Filter tasks" })).toHaveFocus();
     expect(screen.getByTestId("row-4")).toBeInTheDocument();
     expect(screen.queryByTestId("row-1")).toBeNull();
@@ -608,8 +608,10 @@ describe("grouping, sorting and filtering", () => {
     fakeBackend();
     const user = await boot();
     await user.keyboard("{Tab}");
-    expect(heading()).toBe("Open");
+    expect(heading()).toBe("Active");
     await user.keyboard("{Shift>}{Tab}{/Shift}{Shift>}{Tab}{/Shift}");
+    expect(heading()).toBe("All");
+    await user.keyboard("{Shift>}{Tab}{/Shift}");
     expect(heading()).toBe("Done");
   });
 });
@@ -696,9 +698,24 @@ describe("repos", () => {
   });
 });
 
+describe("appearance", () => {
+  it("pins light or dark from Settings and remembers it", async () => {
+    fakeBackend();
+    const user = await boot();
+    expect(document.documentElement.dataset.theme).toBe("light");
+    await user.click(sidebar().getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("radio", { name: "Dark" }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(localStorage.getItem("tars.theme")).toBe("dark");
+    await user.click(screen.getByRole("radio", { name: "System" }));
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(localStorage.getItem("tars.theme")).toBe("system");
+  });
+});
+
 describe("opening tasks", () => {
   it("opens tasks full screen once Settings says so, and Esc returns to the list", async () => {
-    const b = fakeBackend();
+    const b = fakeBackend(openTasks());
     const user = await boot();
     await user.click(sidebar().getByRole("button", { name: "Settings" }));
     await user.click(screen.getByRole("radio", { name: /Full screen/ }));
@@ -709,7 +726,7 @@ describe("opening tasks", () => {
     // tasks read: only opening one does.
     expect(screen.queryByRole("region", { name: "Task details" })).toBeNull();
     expect(screen.queryByRole("button", { name: /preview/ })).toBeNull();
-    await user.keyboard("2");
+    await user.keyboard("3");
     await user.click(document.body);
     const before = b.callsTo("mark_seen").length;
     await user.keyboard("jjj"); // #2, #1, #4, then #3, which has an agent update
@@ -752,9 +769,9 @@ describe("self-healing", () => {
 
 describe("right-click menu", () => {
   it("edits from the menu", async () => {
-    fakeBackend();
+    fakeBackend(openTasks());
     const user = await boot();
-    await user.keyboard("2");
+    await user.keyboard("3");
     await user.pointer({ keys: "[MouseRight]", target: screen.getByTestId("row-3") });
     const menu = within(screen.getByRole("menu", { name: "#3 actions" }));
     await user.click(menu.getByRole("menuitem", { name: /Edit/ }));
@@ -763,9 +780,9 @@ describe("right-click menu", () => {
   });
 
   it("deletes only after confirming, and Cancel keeps the task", async () => {
-    const b = fakeBackend();
+    const b = fakeBackend(openTasks());
     const user = await boot();
-    await user.keyboard("2");
+    await user.keyboard("3");
     await user.pointer({ keys: "[MouseRight]", target: screen.getByTestId("row-3") });
     await user.click(screen.getByRole("menuitem", { name: /Delete/ }));
     const dialog = screen.getByRole("alertdialog", { name: "Delete #3?" });
@@ -798,9 +815,9 @@ describe("right-click menu", () => {
 
 describe("pull requests", () => {
   it("shows a task's PR in the list and details, opens it, and sets it from Edit", async () => {
-    const b = fakeBackend();
+    const b = fakeBackend(openTasks());
     const user = await boot();
-    await user.keyboard("2");
+    await user.keyboard("3");
     const chip = within(screen.getByTestId("row-4")).getByRole("button", { name: "PR #412" });
     await user.click(chip);
     expect(b.callsTo("open_url")).toEqual([{ url: "https://github.com/acme/billing/pull/412" }]);

@@ -1,6 +1,6 @@
 # Tars for macOS
 
-A desktop window onto the same task list as `tars` in the terminal: views on the left (Needs you first), a one-line-per-task list in the middle, and the task with its latest agent report, linked Claude sessions and activity on the right. It refreshes every few seconds, so agent work shows up as it happens.
+A desktop window onto the same task list as `tars` in the terminal: views on the left (All, Needs you, Active, Done), a one-line-per-task list in the middle, and the task with its latest agent report, linked Claude sessions and activity on the right. It refreshes every few seconds, so agent work shows up as it happens.
 
 The app has no database code of its own. Every read and write runs the `tars` CLI with `--json`, so it needs a build of tars that has `tars report` (newer than 0.1.3). The app looks for the binary in `$TARS_BIN`, then on `PATH`, then in `/opt/homebrew/bin`, `/usr/local/bin` and `~/go/bin`, and uses the first one that's new enough. `TARS_HOME` is passed through, and `TARS_DB` is passed as `--db`.
 
@@ -8,7 +8,7 @@ The app has no database code of its own. Every read and write runs the `tars` CL
 |---|---|
 | `j k` / `↑↓`, `home` `end` | Move |
 | `enter` / `esc` | Focus the details / back to the list |
-| `1`–`7`, `tab` `⇧tab` | Switch view |
+| `1`–`4`, `tab` `⇧tab` | Switch view |
 | `/` | Filter the list |
 | `g` | Change grouping (priority, due, status, repo, none) |
 | `x` | Done (again: reopen) |

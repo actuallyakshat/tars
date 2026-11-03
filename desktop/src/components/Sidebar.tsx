@@ -75,7 +75,7 @@ export function Sidebar({ counts, view, page, onView, onPage }: Props) {
           className={"foot-link" + (page === "legend" ? " on" : "")}
           aria-current={page === "legend" ? "page" : undefined}
           onClick={() => onPage("legend")}
-          title="Legend (?)"
+          title="Legend (⌘/)"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
             <circle cx="7" cy="7" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.3" />
@@ -87,7 +87,7 @@ export function Sidebar({ counts, view, page, onView, onPage }: Props) {
           className={"foot-link" + (page === "settings" ? " on" : "")}
           aria-current={page === "settings" ? "page" : undefined}
           onClick={() => onPage("settings")}
-          title="Settings"
+          title="Settings (⌘,)"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
             <circle cx="7" cy="7" r="2" fill="none" stroke="currentColor" strokeWidth="1.3" />

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { CliStatus, NewTask, Task, TaskEdit } from "../api";
 import { SidebarToggle } from "./Panes";
 import { PRIORITIES, STATUS, STATUSES, clampPriority, priorityMark } from "../model";
+import { THEMES, type ThemePref } from "../theme";
 
 // Full pages that replace the list and detail panes: New task, Settings and
 // Legend. Esc or the back button returns to the list.
@@ -274,6 +275,8 @@ export function SettingsPage({
   cli,
   openMode,
   onOpenMode,
+  theme,
+  onTheme,
   onSaveJira,
   onBack,
 }: {
@@ -281,6 +284,8 @@ export function SettingsPage({
   cli: CliStatus | null;
   openMode: OpenMode;
   onOpenMode: (m: OpenMode) => void;
+  theme: ThemePref;
+  onTheme: (t: ThemePref) => void;
   onSaveJira: (base: string) => void;
   onBack: () => void;
 }) {
@@ -309,7 +314,24 @@ export function SettingsPage({
         <div className="settings-content">
           {section === "general" && (
             <section aria-label="General">
-              <h2 id="open-mode-label">Opening tasks</h2>
+              <h2 id="theme-label">Appearance</h2>
+              <p className="muted">System follows the macOS light or dark setting as it changes.</p>
+              <div className="segmented" role="radiogroup" aria-labelledby="theme-label">
+                {THEMES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={theme === t.id}
+                    className={theme === t.id ? "on" : ""}
+                    onClick={() => onTheme(t.id)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              <h2 id="open-mode-label" className="settings-gap">Opening tasks</h2>
               <p className="muted">What happens when you open a task from the list.</p>
               <div className="choice-cards" role="radiogroup" aria-labelledby="open-mode-label">
                 {OPEN_MODES.map((m) => (
@@ -429,12 +451,13 @@ const SHORTCUTS: [string, string][] = [
   ["⌘⌫", "Delete the selected task (asks first)"],
   ["⌘K", "Search tasks and commands"],
   ["⌘N", "New task"],
+  ["⌘,", "Settings"],
   ["⌘B", "Show or hide the sidebar"],
   ["⌘⇧B", "Show or hide the preview"],
   ["f", "Open the selected task full screen, or go back"],
   ["⌘R", "Refresh"],
   ["⌘+  ⌘−  ⌘0", "Zoom in, zoom out, actual size"],
-  ["?", "Legend"],
+  ["⌘/  ?", "Legend"],
 ];
 
 function ShortcutTable() {

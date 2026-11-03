@@ -276,7 +276,7 @@ function Sections({
   return (
     <>
       {sections.length === 0 && !adding && <p className="repo-empty">{empty}</p>}
-      <div className="pref-grid">
+      <div className="pref-list">
         {sections.map((s) => (
           <PrefCard key={s.name} section={s} onSave={(text) => onSave(s.name, text)} />
         ))}
@@ -321,12 +321,10 @@ function PrefCard({ section, onSave }: { section: Section; onSave: (text: string
     );
   }
   return (
-    <article className="pref-card" aria-label={title}>
-      <h3>
-        <span>
-          {title}
-          {SECTION_NAMES[section.name] && <span className="pref-key mono">{section.name}</span>}
-        </span>
+    <article className="pref-row" aria-label={title}>
+      <header className="pref-label">
+        <h3>{title}</h3>
+        {SECTION_NAMES[section.name] && <span className="pref-key mono">{section.name}</span>}
         <span className="pref-actions">
           {confirming ? (
             <>
@@ -348,8 +346,10 @@ function PrefCard({ section, onSave }: { section: Section; onSave: (text: string
             </>
           )}
         </span>
-      </h3>
-      <Prose text={section.content} />
+      </header>
+      <div className="pref-body">
+        <Prose text={section.content} />
+      </div>
     </article>
   );
 }
@@ -387,7 +387,7 @@ function PrefEditor({
 
   return (
     <form
-      className="pref-card editing"
+      className="pref-row editing"
       aria-label={`Editing ${title}`}
       onSubmit={(e) => {
         e.preventDefault();
@@ -402,10 +402,10 @@ function PrefEditor({
         }
       }}
     >
-      {fixedName ? (
-        <h3>{title}</h3>
-      ) : (
-        <>
+      <header className="pref-label">
+        {fixedName ? (
+          <h3>{title}</h3>
+        ) : (
           <input
             ref={nameRef}
             className="pref-name-input"
@@ -415,32 +415,34 @@ function PrefEditor({
             placeholder="Name, e.g. tests"
             spellCheck={false}
           />
-          {suggestions.length > 0 && (
-            <span className="chips">
-              {suggestions.map((n) => (
-                <button type="button" key={n} className={"chip" + (name === n ? " on" : "")} onClick={() => setName(n)}>
-                  {sectionTitle(n)}
-                </button>
-              ))}
-            </span>
-          )}
-        </>
-      )}
-      <textarea
-        ref={area}
-        aria-label={`${title} text`}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={Math.min(14, Math.max(4, text.split("\n").length + 1))}
-        placeholder={"What agents should know. Lines starting with - become a list."}
-      />
-      <div className="pref-editor-actions">
-        <button type="button" className="ghost" onClick={onCancel}>
-          Cancel
-        </button>
-        <button type="submit" className="primary" disabled={!ready}>
-          Save <kbd aria-hidden="true">⌘↩</kbd>
-        </button>
+        )}
+      </header>
+      <div className="pref-body">
+        {!fixedName && suggestions.length > 0 && (
+          <span className="chips">
+            {suggestions.map((n) => (
+              <button type="button" key={n} className={"chip" + (name === n ? " on" : "")} onClick={() => setName(n)}>
+                {sectionTitle(n)}
+              </button>
+            ))}
+          </span>
+        )}
+        <textarea
+          ref={area}
+          aria-label={`${title} text`}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={Math.min(14, Math.max(4, text.split("\n").length + 1))}
+          placeholder={"What agents should know. Lines starting with - become a list."}
+        />
+        <div className="pref-editor-actions">
+          <button type="button" className="ghost" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={!ready}>
+            Save <kbd aria-hidden="true">⌘↩</kbd>
+          </button>
+        </div>
       </div>
     </form>
   );
@@ -449,6 +451,9 @@ function PrefEditor({
 // Swaps the repo's heading for a text field. Enter saves, Esc cancels.
 function RenameField({ name, onSave, onCancel }: { name: string; onSave: (to: string) => Promise<void>; onCancel: () => void }) {
   const [value, setValue] = useState(name);
+  // Blocks a second Enter or click while the first rename is in flight;
+  // it would rename the old name again and fail with "not found".
+  const [saving, setSaving] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
     ref.current?.focus();
@@ -457,10 +462,16 @@ function RenameField({ name, onSave, onCancel }: { name: string; onSave: (to: st
   return (
     <form
       className="rename-form"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        if (value.trim() && value.trim() !== name) void onSave(value.trim());
-        else onCancel();
+        if (saving) return;
+        if (!value.trim() || value.trim() === name) return onCancel();
+        setSaving(true);
+        try {
+          await onSave(value.trim());
+        } finally {
+          setSaving(false);
+        }
       }}
     >
       <input
@@ -477,7 +488,7 @@ function RenameField({ name, onSave, onCancel }: { name: string; onSave: (to: st
         }}
         spellCheck={false}
       />
-      <button type="submit" className="primary">
+      <button type="submit" className="primary" disabled={saving}>
         Rename
       </button>
       <button type="button" className="ghost" onClick={onCancel}>

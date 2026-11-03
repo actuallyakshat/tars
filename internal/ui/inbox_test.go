@@ -47,6 +47,9 @@ func newTestInbox(t *testing.T, w, h int, tasks ...*store.Task) (*inbox, *store.
 		if task.Priority == 0 && task.Title[0] != '!' {
 			task.Priority = 2 // store default is 0; tests mean "normal" unless they say otherwise
 		}
+		if task.Status == "" {
+			task.Status = store.StatusInProgress // so it shows in Open, where the inbox starts
+		}
 		task.Title = strings.TrimPrefix(task.Title, "!")
 		if err := st.CreateTask(task); err != nil {
 			t.Fatal(err)
@@ -86,8 +89,8 @@ func TestEmptyInbox(t *testing.T) {
 	if !strings.Contains(m.View(), "TARS") {
 		t.Fatal("header missing")
 	}
-	m.setView(viewOpen)
-	if !strings.Contains(m.View(), "No open tasks. Press c to add one.") {
+	m.setView(viewActive)
+	if !strings.Contains(m.View(), "Nothing active.") {
 		t.Fatalf("empty state missing:\n%s", m.View())
 	}
 }
@@ -113,9 +116,9 @@ func TestGroupsByPriorityByDefault(t *testing.T) {
 
 func TestGroupingCycles(t *testing.T) {
 	m, _ := newTestInbox(t, 120, 30,
-		&store.Task{Title: "late", Due: day(-2), Repo: "billing", Status: store.StatusReady},
+		&store.Task{Title: "late", Due: day(-2), Repo: "billing"},
 		&store.Task{Title: "today", Due: day(0)},
-		&store.Task{Title: "someday", Status: store.StatusInReview},
+		&store.Task{Title: "someday"},
 	)
 	press(m, "g")
 	v := m.View()
@@ -124,7 +127,7 @@ func TestGroupingCycles(t *testing.T) {
 	}
 	press(m, "g")
 	v = m.View()
-	if !(strings.Index(v, "IN REVIEW") < strings.Index(v, "READY") && strings.Index(v, "READY") < strings.Index(v, "INBOX")) {
+	if !strings.Contains(v, "IN PROGRESS · 3") {
 		t.Fatalf("status grouping:\n%s", v)
 	}
 	press(m, "g")
@@ -145,26 +148,28 @@ func TestGroupingCycles(t *testing.T) {
 
 func TestViewsAndCounts(t *testing.T) {
 	m, _ := newTestInbox(t, 140, 30,
-		&store.Task{Title: "in inbox"},
+		&store.Task{Title: "working", Status: store.StatusInProgress},
+		&store.Task{Title: "in inbox", Status: store.StatusInbox},
 		&store.Task{Title: "ready one", Status: store.StatusReady},
+		&store.Task{Title: "reviewing", Status: store.StatusInReview},
 		&store.Task{Title: "finished", Status: store.StatusDone},
 	)
 	top := m.topBar()
-	for _, want := range []string{"Open 2", "Inbox 1", "Ready 1", "Review 0", "Blocked 0", "Done 1"} {
+	for _, want := range []string{"All 5", "Needs you 0", "Active 4", "Done 1"} {
 		if !strings.Contains(top, want) {
 			t.Errorf("top bar missing %q: %s", want, top)
 		}
 	}
-	if strings.Contains(m.View(), "finished") {
-		t.Error("done task shown in Open")
+	if v := m.View(); strings.Contains(v, "finished") || !strings.Contains(v, "in inbox") || !strings.Contains(v, "reviewing") {
+		t.Errorf("Active should hold every unfinished task:\n%s", v)
 	}
 	press(m, "tab")
-	if v := m.View(); !strings.Contains(v, "in inbox") || strings.Contains(v, "ready one") {
-		t.Fatalf("tab should switch to Inbox:\n%s", v)
+	if v := m.View(); !strings.Contains(v, "finished") || strings.Contains(v, "in inbox") {
+		t.Fatalf("tab should switch to Done:\n%s", v)
 	}
-	press(m, "7")
-	if !strings.Contains(m.View(), "finished") {
-		t.Fatal("7 should show Done")
+	press(m, "1")
+	if v := m.View(); !strings.Contains(v, "finished") || !strings.Contains(v, "working") {
+		t.Fatal("1 should show All")
 	}
 }
 
@@ -238,7 +243,7 @@ func TestUnreadMarker(t *testing.T) {
 	if !get(t, st, 1).Unread || get(t, st, 2).Unread {
 		t.Fatal("only agent activity should mark a task unread")
 	}
-	if !strings.Contains(m.topBar(), "Open 2 ●") {
+	if !strings.Contains(m.topBar(), "Active 2 ●") {
 		t.Fatalf("top bar should flag unread: %s", m.topBar())
 	}
 	press(m, "enter") // opening marks it seen
@@ -253,9 +258,9 @@ func TestUnreadMarker(t *testing.T) {
 func TestDoneAndUndo(t *testing.T) {
 	m, st := newTestInbox(t, 100, 30,
 		&store.Task{Title: "finish me", Status: store.StatusBlocked, WaitingOn: "Rahul"},
-		&store.Task{Title: "next"},
+		&store.Task{Title: "next", Status: store.StatusBlocked},
 	)
-	press(m, "x")
+	press(m, "6", "x")
 	if task := get(t, st, 1); task.Status != store.StatusDone || task.WaitingOn != "" {
 		t.Fatalf("x should mark done and clear blocker: %+v", task)
 	}
@@ -301,7 +306,7 @@ func TestStatusAndPriorityPickers(t *testing.T) {
 
 func TestQuickAdd(t *testing.T) {
 	m, st := newTestInbox(t, 120, 30)
-	press(m, "3") // from Inbox view
+	press(m, "3") // from Active view
 	press(m, "c")
 	typeText(m, "!high")
 	press(m, "enter")
@@ -426,7 +431,7 @@ func TestAutoRefreshKeepsSelection(t *testing.T) {
 	if m.selected().ID != 2 {
 		t.Fatal("setup: cursor should be on #2")
 	}
-	agentTask := &store.Task{Title: "!added by agent", Priority: 0}
+	agentTask := &store.Task{Title: "!added by agent", Priority: 0, Status: store.StatusInProgress}
 	agentTask.Title = "added by agent"
 	if err := st.CreateTask(agentTask); err != nil {
 		t.Fatal(err)
@@ -455,7 +460,7 @@ func TestArrowsDoNotSwitchViews(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyRight})
 	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
 	press(m, "L", "H")
-	if m.view != viewOpen {
+	if m.view != viewActive {
 		t.Fatalf("arrows/L/H should not change view, now on %s", views[m.view].name)
 	}
 	press(m, "enter")
@@ -526,7 +531,7 @@ func TestNeedsYouViewAnswerAndResume(t *testing.T) {
 	}
 
 	// Tasks without a question or a session explain why nothing happened.
-	m.setView(viewOpen)
+	m.setView(viewActive)
 	for m.selected() != nil && m.selected().ID != quiet.ID {
 		press(m, "down")
 	}
@@ -542,7 +547,7 @@ func TestNeedsYouViewAnswerAndResume(t *testing.T) {
 
 func TestStartsOnOpenWhenNothingNeedsYou(t *testing.T) {
 	m, _ := newTestInbox(t, 100, 30, &store.Task{Title: "x"})
-	if m.view != viewOpen {
+	if m.view != viewActive {
 		t.Fatalf("should start on Open, got %s", views[m.view].name)
 	}
 	m.setView(viewNeedsYou)

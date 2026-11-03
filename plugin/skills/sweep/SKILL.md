@@ -25,18 +25,19 @@ You will take **ready** tasks from the `tars` ledger and, for each one, produce 
 
 ## 1. Select tasks
 
-1. Get candidates with `tars ls -s ready --json`.
-2. Apply the user's filter from the arguments:
+1. Run `tars context` to load the user's personal profile, and follow it while planning and reporting.
+2. Get candidates with `tars ls -s ready --json`.
+3. Apply the user's filter from the arguments:
    - "jira only" → keep tasks with a Jira key
    - a repo name → that repo
    - `#12 #14` → exactly those IDs (they must still be `ready`)
    - "max N" → cap the count
    - default cap: 5 tasks
-3. For each candidate, load `tars repo show <repo> --json`. **Skip** any task (and say why) when:
+4. For each candidate, load `tars repo show <repo> --json`. **Skip** any task (and say why) when:
    - it has no repo, or the repo profile has no `path`
    - the path isn't a git repo
    - the task has no acceptance criteria
-4. If nothing is left, say so and suggest `/tars triage my inbox`. Then stop.
+5. If nothing is left, say so and suggest `/tars triage my inbox`. Then stop.
 
 ## 2. Confirm the plan
 

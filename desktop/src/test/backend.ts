@@ -96,6 +96,11 @@ export function sampleTasks(): Task[] {
   ];
 }
 
+// The sample tasks, with every unfinished one moved to in progress.
+export function openTasks(): Task[] {
+  return sampleTasks().map((t) => (t.status === "done" ? t : { ...t, status: "in-progress" }));
+}
+
 export interface Backend {
   tasks: Task[];
   repos: Repo[];

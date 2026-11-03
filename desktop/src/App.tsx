@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, asCliError, isFatal, type CliError, type CliStatus, type NewTask, type Repo, type Status, type Task, type TaskEdit, type TaskSession } from "./api";
 import {
-  DONE,
+  ACTIVE,
   GROUPINGS,
-  OPEN,
   PRIORITIES,
   STATUS,
   VIEWS,
@@ -14,6 +13,7 @@ import {
   jiraUrl,
   openQuestion,
   resumeCommand,
+  viewOf,
   type GroupBy,
   type SortBy,
 } from "./model";
@@ -23,6 +23,7 @@ import { Detail } from "./components/Detail";
 import { CliProblem, ConfirmDialog } from "./components/Dialogs";
 import { ContextMenu } from "./components/ContextMenu";
 import { EditTaskPage, LegendPage, NewTaskPage, SettingsPage, type OpenMode } from "./components/Pages";
+import { THEME_KEY, THEMES, applyTheme, storedTheme, type ThemePref } from "./theme";
 import { ReposPage } from "./components/ReposPage";
 import type { PageName } from "./components/Sidebar";
 import { CommandPalette, type Command } from "./components/CommandPalette";
@@ -66,7 +67,7 @@ export function App() {
   const [loaded, setLoaded] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [view, setView] = useState(OPEN);
+  const [view, setView] = useState(ACTIVE);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<Task | null>(null);
   const [focus, setFocus] = useState<"list" | "detail">("list");
@@ -84,6 +85,7 @@ export function App() {
   // The selected task's details fill the window: no sidebar, no list.
   const [fullDetail, setFullDetail] = useState(false);
   const [flash, setFlash] = useState<Flash>(null);
+  const [theme, setTheme] = useState<ThemePref>(storedTheme);
   const [jiraBase, setJiraBase] = useState(() => localStorage.getItem(JIRA_KEY) ?? "");
   const [now, setNow] = useState(() => new Date());
   const [editing, setEditing] = useState<Task | null>(null);
@@ -266,6 +268,10 @@ export function App() {
   useEffect(() => localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(sidebarWidth))), [sidebarWidth]);
   useEffect(() => localStorage.setItem(GROUP_KEY, groupBy), [groupBy]);
   useEffect(() => localStorage.setItem(OPEN_MODE_KEY, openMode), [openMode]);
+  useEffect(() => {
+    localStorage.setItem(THEME_KEY, theme);
+    applyTheme(theme);
+  }, [theme]);
   useEffect(() => localStorage.setItem(SORT_KEY, sortBy), [sortBy]);
   useEffect(() => {
     localStorage.setItem(ZOOM_KEY, String(zoom));
@@ -377,11 +383,11 @@ export function App() {
     setPage("edit");
   };
 
-  // Shows a task wherever it lives: the current view if it's there, else Open or Done.
+  // Shows a task wherever it lives: the current view if it's there, else its status view.
   const goToTask = (id: number) => {
     const t = tasks.find((x) => x.id === id);
     if (!t) return;
-    const v = VIEWS[view].has(t) ? view : t.status === "done" ? DONE : OPEN;
+    const v = VIEWS[view].has(t) ? view : viewOf(t);
     setPage("list");
     setView(v);
     setQuery("");
@@ -463,7 +469,12 @@ export function App() {
     }
     say(`Added #${created.id} ${created.title}`);
     const list = await refresh();
-    if (list && flatten(groupTasks(list, view, listOpts)).some((x) => x.id === created.id)) setSelectedId(created.id);
+    const fresh = list?.find((x) => x.id === created.id);
+    if (!fresh) return true;
+    // Like the TUI, follow the new task to its view when this one can't show it.
+    if (!VIEWS[view].has(fresh)) setView(viewOf(fresh));
+    setQuery("");
+    setSelectedId(fresh.id);
     return true;
   };
 
@@ -509,6 +520,10 @@ export function App() {
         else void refresh().then((l) => l && say("Refreshed"));
       } else if (k === "n" && !fatal) {
         setPage("new");
+      } else if (k === "," && !fatal) {
+        setPage("settings");
+      } else if (k === "/" && !fatal) {
+        setPage("legend");
       } else if (k === "backspace") {
         // ⌘⌫ in a text field deletes text, not the task.
         const tag = (e.target as HTMLElement | null)?.tagName;
@@ -631,7 +646,7 @@ export function App() {
         break;
       }
       default:
-        if (/^[1-7]$/.test(e.key)) changeView(Number(e.key) - 1);
+        if (/^[1-4]$/.test(e.key)) changeView(Number(e.key) - 1);
         else return;
     }
     e.preventDefault();
@@ -693,13 +708,18 @@ export function App() {
     { id: "sidebar", label: sidebarOpen ? "Hide sidebar" : "Show sidebar", keys: "⌘B", run: toggleSidebar },
     { id: "preview", label: detailOpen ? "Hide preview" : "Show preview", keys: "⌘⇧B", run: toggleDetail },
     { id: "repos", label: "Repos and preferences", run: () => setPage("repos") },
-    { id: "settings", label: "Settings", run: () => setPage("settings") },
+    { id: "settings", label: "Settings", keys: "⌘,", run: () => setPage("settings") },
     {
       id: "open-mode",
       label: openMode === "full" ? "Open tasks in the side pane" : "Open tasks full screen",
       run: () => setOpenMode(openMode === "full" ? "pane" : "full"),
     },
-    { id: "legend", label: "Legend", keys: "?", run: () => setPage("legend") },
+    ...THEMES.filter((t) => t.id !== theme).map((t) => ({
+      id: `theme-${t.id}`,
+      label: t.id === "system" ? "Match system appearance" : `Use ${t.label.toLowerCase()} appearance`,
+      run: () => setTheme(t.id),
+    })),
+    { id: "legend", label: "Legend", keys: "⌘/", run: () => setPage("legend") },
     { id: "refresh", label: "Refresh", keys: "⌘R", run: () => void refresh().then((l) => l && say("Refreshed")) },
     { id: "zoom-in", label: "Zoom in", keys: "⌘+", run: () => zoomBy(1) },
     { id: "zoom-out", label: "Zoom out", keys: "⌘−", run: () => zoomBy(-1) },
@@ -751,6 +771,8 @@ export function App() {
           cli={cli}
           openMode={openMode}
           onOpenMode={setOpenMode}
+          theme={theme}
+          onTheme={setTheme}
           onSaveJira={(b) => {
             setJiraBase(b);
             localStorage.setItem(JIRA_KEY, b);
@@ -787,7 +809,6 @@ export function App() {
         <TaskList
           groups={groups}
           view={view}
-          totalOpen={viewCounts[OPEN].total}
           selectedId={selectedId}
           now={now}
           query={query}

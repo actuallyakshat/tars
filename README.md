@@ -49,7 +49,7 @@ brew install --cask actuallyakshat/tap/tars-app
 
 ## The CLI
 
-Run `tars` with no arguments to open the task list. It's a compact, Gmail-style list: one line per task, grouped by priority, with views along the top (Open · Inbox · Ready · Review · Blocked · Done). Press `enter` to open a task. On wide terminals (120+ columns) the details open beside the list; on narrower ones they take the whole screen. The activity log starts collapsed.
+Run `tars` with no arguments to open the task list. It's a compact, Gmail-style list: one line per task, grouped by priority, with views along the top (All · Needs you · Active · Done). Press `enter` to open a task. On wide terminals (120+ columns) the details open beside the list; on narrower ones they take the whole screen. The activity log starts collapsed.
 
 A **●** marks tasks the agent has updated since you last opened them.
 
@@ -57,7 +57,7 @@ A **●** marks tasks the agent has updated since you last opened them.
 |---|---|
 | `↑↓` / `j k` | Move (in full-screen details, `j k` go to the next/previous task) |
 | `enter` / `esc` | Open / close details |
-| `tab` / `1`–`6` | Switch view |
+| `tab` / `1`–`4` | Switch view |
 | `g` | Group by priority → due → status → repo → none |
 | `/` | Search (title, Jira, repo, tags) |
 | `x` | Done (press again to reopen) |
@@ -120,7 +120,7 @@ Precedence: the repo's **CLAUDE.md / AGENTS.md** > tars repo profile > personal 
 
 ## The macOS app
 
-`desktop/` holds a native macOS app (Tauri) for when you'd rather click than type: the same views with Needs you first, the task list, and a detail pane with the agent's report, the linked Claude sessions (copy the resume command or open it in Terminal), and the activity log. You can answer questions, add notes and tasks, and change status from it. It reads and writes only through the `tars` CLI, so it needs a build that has `tars report`. See [desktop/README.md](desktop/README.md) to run or build it.
+`desktop/` holds a native macOS app (Tauri) for when you'd rather click than type: the same views (All, Needs you, Active, Done), the task list, and a detail pane with the agent's report, the linked Claude sessions (copy the resume command or open it in Terminal), and the activity log. You can answer questions, add notes and tasks, and change status from it. It reads and writes only through the `tars` CLI, so it needs a build that has `tars report`. See [desktop/README.md](desktop/README.md) to run or build it.
 
 ## Data
 
