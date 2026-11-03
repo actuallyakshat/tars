@@ -78,9 +78,3 @@ func TestTaskCardShowsEverything(t *testing.T) {
 		}
 	}
 }
-
-func TestBriefEmpty(t *testing.T) {
-	if out := Brief(&store.Brief{Date: "2026-10-30"}, 100); !strings.Contains(out, "All clear") {
-		t.Fatalf("empty brief: %s", out)
-	}
-}

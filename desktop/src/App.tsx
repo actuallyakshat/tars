@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, asCliError, isFatal, type CliError, type CliStatus, type NewTask, type Repo, type Status, type Task, type TaskEdit, type TaskSession } from "./api";
+import { api, asCliError, isFatal, type Capture, type CliError, type CliStatus, type NewTask, type Repo, type Status, type Task, type TaskEdit, type TaskSession } from "./api";
 import {
   ACTIVE,
   GROUPINGS,
@@ -25,6 +25,8 @@ import { ContextMenu } from "./components/ContextMenu";
 import { EditTaskPage, LegendPage, NewTaskPage, SettingsPage, type OpenMode } from "./components/Pages";
 import { THEME_KEY, THEMES, applyTheme, storedTheme, type ThemePref } from "./theme";
 import { ReposPage } from "./components/ReposPage";
+import { TaskPicker } from "./components/TaskPicker";
+import { UnfiledPage, captureTitle } from "./components/UnfiledPage";
 import type { PageName } from "./components/Sidebar";
 import { CommandPalette, type Command } from "./components/CommandPalette";
 import { PanesContext } from "./components/Panes";
@@ -98,6 +100,10 @@ export function App() {
   const [undo, setUndo] = useState<Undo>(null);
   const [menu, setMenu] = useState<{ id: number; x: number; y: number } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
+  const [unfiled, setUnfiled] = useState<Capture[]>([]);
+  const [captureOn, setCaptureOn] = useState<boolean | null>(null);
+  // Choosing a task: to file a captured session into, or to merge a task into.
+  const [picking, setPicking] = useState<{ file: Capture } | { merge: Task } | null>(null);
 
   const listOpts = { group: groupBy, sort: sortBy, query, now };
   const groups = useMemo(() => groupTasks(tasks, view, { group: groupBy, sort: sortBy, query, now }), [tasks, view, groupBy, sortBy, query, now]);
@@ -129,6 +135,7 @@ export function App() {
     try {
       const list = await api.list();
       setTasks(list);
+      api.unfiled().then(setUnfiled, () => {});
       setNow(new Date());
       const id = selRef.current;
       if (id !== null && list.some((t) => t.id === id)) {
@@ -181,6 +188,7 @@ export function App() {
     indexRef.current = 0;
     setLoaded(true);
     api.repos().then(setProfiles, () => {});
+    api.unfiled().then(setUnfiled, () => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -246,6 +254,7 @@ export function App() {
   // Agents add repos and preferences while the app is open; show the latest.
   useEffect(() => {
     if (page === "repos") api.repos().then(setProfiles, fail);
+    if (page === "settings" || page === "unfiled") api.capture().then((c) => setCaptureOn(c.on), () => {});
   }, [page, fail]);
 
   useEffect(() => {
@@ -407,6 +416,51 @@ export function App() {
     return ok;
   };
 
+  const fileInto = async (c: Capture, id: number) => {
+    const t = tasks.find((x) => x.id === id);
+    const ok = await act(() => api.fileSession(c.session_id, id), `Filed “${captureTitle(c)}” into #${id}${t ? " " + t.title : ""}`);
+    if (ok) setPicking(null);
+    return ok;
+  };
+
+  const fileAsNew = async (c: Capture, title: string) => {
+    let id: number;
+    try {
+      id = (await api.fileSession(c.session_id, null, title)).task_id;
+    } catch (e) {
+      fail(e);
+      return false;
+    }
+    say(`Added #${id} ${title}`);
+    await refresh();
+    return true;
+  };
+
+  const dismiss = (c: Capture) => act(() => api.dismiss(c.session_id), `Dismissed “${captureTitle(c)}”`);
+
+  const merge = async (from: Task, into: number) => {
+    const ok = await act(() => api.merge(from.id, into), `Merged #${from.id} into #${into}. Its sessions, reports and notes moved over.`);
+    if (ok) {
+      setPicking(null);
+      if (selectedId === from.id) setSelectedId(into);
+      if (undo?.id === from.id) setUndo(null);
+    }
+    return ok;
+  };
+
+  const setCapture = async (on: boolean, repo: string | null = null) => {
+    try {
+      const c = await api.capture(on, repo);
+      setCaptureOn(c.on);
+    } catch (e) {
+      fail(e);
+      return false;
+    }
+    say(repo ? `Capture ${on ? "on" : "off"} in ${repo}` : `Capture ${on ? "on" : "off"}`);
+    if (repo) api.repos().then(setProfiles, fail);
+    return true;
+  };
+
   const chooseFolder = () =>
     api.chooseFolder().catch((e) => {
       fail(e);
@@ -507,7 +561,7 @@ export function App() {
       setPaletteOpen((o) => !o);
       return;
     }
-    if (paletteOpen || menu || confirmDelete) return;
+    if (paletteOpen || menu || confirmDelete || picking) return;
     if (e.metaKey && !e.altKey && !e.ctrlKey) {
       if (k === "=" || k === "+") {
         zoomBy(1);
@@ -693,6 +747,7 @@ export function App() {
               toggleFull();
             },
           },
+          { id: "merge", label: `Merge #${shown.id} into another task…`, run: () => setPicking({ merge: shown }) },
           { id: "delete", label: `Delete #${shown.id}…`, keys: "⌘⌫", run: () => setConfirmDelete(shown) },
         ]
       : []),
@@ -707,6 +762,7 @@ export function App() {
     })),
     { id: "sidebar", label: sidebarOpen ? "Hide sidebar" : "Show sidebar", keys: "⌘B", run: toggleSidebar },
     { id: "preview", label: detailOpen ? "Hide preview" : "Show preview", keys: "⌘⇧B", run: toggleDetail },
+    { id: "unfiled", label: `Unfiled sessions (${unfiled.length})`, run: () => setPage("unfiled") },
     { id: "repos", label: "Repos and preferences", run: () => setPage("repos") },
     { id: "settings", label: "Settings", keys: "⌘,", run: () => setPage("settings") },
     {
@@ -747,6 +803,7 @@ export function App() {
         <div className="sidebar-wrap">
         <Sidebar
           counts={viewCounts}
+          unfiled={unfiled.length}
           view={view}
           page={page}
           onView={changeView}
@@ -771,6 +828,8 @@ export function App() {
           cli={cli}
           openMode={openMode}
           onOpenMode={setOpenMode}
+          captureOn={captureOn}
+          onCapture={(on) => void setCapture(on)}
           theme={theme}
           onTheme={setTheme}
           onSaveJira={(b) => {
@@ -800,11 +859,25 @@ export function App() {
             )
           }
           onChooseFolder={chooseFolder}
+          onSetCapture={(repo, on) => setCapture(on, repo)}
           onReveal={(p) => void api.reveal(p).catch(fail)}
           onBack={() => setPage("list")}
         />
       )}
       {page === "legend" && <LegendPage onBack={() => setPage("list")} />}
+      {page === "unfiled" && (
+        <UnfiledPage
+          sessions={unfiled}
+          captureOn={captureOn}
+          now={now}
+          onFileInto={(c) => setPicking({ file: c })}
+          onNewTask={fileAsNew}
+          onDismiss={(c) => void dismiss(c)}
+          onResume={(c) => void api.openInTerminal(c.session_id, c.worktree).then(() => say("Opened in Terminal"), fail)}
+          onSettings={() => setPage("settings")}
+          onBack={() => setPage("list")}
+        />
+      )}
       {page === "list" && !full && (
         <TaskList
           groups={groups}
@@ -902,6 +975,7 @@ export function App() {
                   },
                 },
                 { label: t.status === "done" ? "Reopen" : "Mark done", keys: "X", run: () => toggleDone(t) },
+                { label: "Merge into…", run: () => setPicking({ merge: t }) },
                 { label: "Delete…", keys: "⌘⌫", danger: true, run: () => setConfirmDelete(t) },
               ]}
             />
@@ -916,6 +990,29 @@ export function App() {
           onCancel={() => setConfirmDelete(null)}
         />
       )}
+      {picking &&
+        ("file" in picking ? (
+          <TaskPicker
+            title={`File “${captureTitle(picking.file)}”`}
+            hint="The session is linked to the task you pick, so you can resume it from there."
+            tasks={tasks}
+            prefer={picking.file.repo}
+            actionLabel="File into task"
+            onPick={(id) => fileInto(picking.file, id)}
+            onCancel={() => setPicking(null)}
+          />
+        ) : (
+          <TaskPicker
+            title={`Merge #${picking.merge.id} into…`}
+            hint={`“${picking.merge.title}” is folded into the task you pick: its sessions, reports and notes move over, and #${picking.merge.id} is deleted.`}
+            tasks={tasks}
+            exclude={picking.merge.id}
+            prefer={picking.merge.repo}
+            actionLabel="Merge"
+            onPick={(id) => merge(picking.merge, id)}
+            onCancel={() => setPicking(null)}
+          />
+        ))}
       {paletteOpen && <CommandPalette tasks={tasks} commands={commands} onTask={goToTask} onClose={() => setPaletteOpen(false)} />}
     </div>
     </PanesContext.Provider>

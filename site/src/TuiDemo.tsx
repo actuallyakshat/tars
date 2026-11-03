@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { AnimatePresence, LayoutGroup, motion, useInView } from "motion/react";
 
 type Status = "inbox" | "ready" | "in-progress" | "in-review" | "blocked" | "done";
 
@@ -25,7 +25,7 @@ type Task = {
 const initialTasks: Task[] = [
   {
     id: 12, title: "Fix CSV export timeout for large accounts", status: "in-progress", priority: 0,
-    jira: "BILL-881", repo: "billing-svc", when: "2d late", late: true, branch: "tars/12-csv-export",
+    jira: "BILL-881", repo: "billing-svc", when: "2d late", late: true, branch: "fix/csv-export",
     body: "Exports over 200k rows time out after 30s. Acme hit it twice this week.",
     criteria: ["1M rows export in under 30s", "Progress is shown while exporting"],
     report: {
@@ -37,7 +37,7 @@ const initialTasks: Task[] = [
     session: { name: "csv export timeout", id: "4be1c9d0" },
     log: [
       { who: "you", kind: "note", text: "Root cause: N+1 query in the exporter.", ago: "yesterday" },
-      { who: "agent", kind: "park", text: "Batched the account lookups. Next: stream rows instead of buffering.", ago: "3h ago" },
+      { who: "agent", kind: "report", text: "Batched the account lookups. Next: stream rows instead of buffering.", ago: "3h ago" },
     ],
   },
   {
@@ -53,14 +53,14 @@ const initialTasks: Task[] = [
       ago: "40m ago",
     },
     session: { name: "webhook retry", id: "8f3c21aa" },
-    log: [{ who: "agent", kind: "triage", text: "Pulled details from BILL-902 and drafted criteria. You confirmed them.", ago: "1d ago" }],
+    log: [{ who: "agent", kind: "session", text: "Linked session \u201cwebhook retry\u201d by branch tars/15-webhook-retry.", ago: "1d ago" }],
   },
   {
     id: 9, title: "Paginate the audit log API", status: "in-progress", priority: 2,
     jira: "WEB-77", repo: "web", when: "today",
     body: "The audit endpoint returns every row. Large tenants get 40MB responses.",
     criteria: ["Cursor-based pagination", "Page size defaults to 100"],
-    log: [{ who: "agent", kind: "sweep", text: "Working in ../web.tars-9 …", ago: "1h ago" }],
+    log: [{ who: "agent", kind: "session", text: "Linked session \u201caudit log pagination\u201d by branch feat/audit-pagination.", ago: "1h ago" }],
   },
   {
     id: 18, title: "Ping Rahul about staging keys", status: "blocked", priority: 2,
@@ -76,13 +76,11 @@ const initialTasks: Task[] = [
 
 const needsYou = (t: Task) => !!t.report?.needsYou && t.status !== "done";
 
+// The real TUI's views, in its order (internal/ui/inbox.go).
 const views: { name: string; has: (t: Task) => boolean }[] = [
+  { name: "All", has: () => true },
   { name: "Needs you", has: needsYou },
-  { name: "Open", has: (t) => t.status !== "done" },
-  { name: "Inbox", has: (t) => t.status === "inbox" },
-  { name: "Ready", has: (t) => t.status === "ready" },
-  { name: "Review", has: (t) => t.status === "in-review" },
-  { name: "Blocked", has: (t) => t.status === "blocked" },
+  { name: "Active", has: (t) => t.status !== "done" },
   { name: "Done", has: (t) => t.status === "done" },
 ];
 
@@ -111,7 +109,7 @@ const swap = {
 
 export function TuiDemo() {
   const [tasks, setTasks] = useState(initialTasks);
-  const [view, setView] = useState(1); // Open; "Needs you" sits first in the bar
+  const [view, setView] = useState(2); // Active, as in the real TUI
   const [cursor, setCursor] = useState(0);
   const [open, setOpen] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -119,10 +117,12 @@ export function TuiDemo() {
   const [undo, setUndo] = useState<Task[] | null>(null);
   const [agentDone, setAgentDone] = useState(false);
   const screenRef = useRef<HTMLDivElement>(null);
+  const seen = useInView(screenRef, { once: true, amount: 0.5 });
 
-  // The one scripted moment: the agent finishes #9 while the visitor watches,
-  // exactly the way sweep results show up in the real list.
+  // The one scripted moment: a session on #9 reports back while the visitor
+  // watches, the way a new report shows up in the real list.
   useEffect(() => {
+    if (!seen) return;
     const timer = window.setTimeout(() => {
       setTasks((ts) =>
         ts.map((t): Task =>
@@ -130,7 +130,7 @@ export function TuiDemo() {
             ? {
                 ...t, status: "in-review", unread: true,
                 report: {
-                  done: "Cursor pagination, page size 100. Committed 7be03d1 on tars/9-audit-pagination.",
+                  done: "Cursor pagination, page size 100. Committed 7be03d1 on feat/audit-pagination.",
                   verified: "npm test: 388 passed (14 new)",
                   next: "Ready for your review",
                   ago: "just now",
@@ -144,7 +144,7 @@ export function TuiDemo() {
       setAgentDone(true);
     }, AGENT_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [seen]);
 
   const visible = useMemo(
     () =>
@@ -229,7 +229,7 @@ export function TuiDemo() {
         } else say("Nothing to undo");
         return true;
     }
-    if (/^[1-7]$/.test(key)) {
+    if (/^[1-4]$/.test(key)) {
       switchView(Number(key) - 1);
       return true;
     }
@@ -308,7 +308,7 @@ export function TuiDemo() {
               </motion.div>
             ) : rows.length === 0 ? (
               <motion.p key={`empty-${view}`} className="tui-empty" {...swap}>
-                Nothing here. Press 1–6 to see another view.
+                Nothing here. Press 1–4 to see another view.
               </motion.p>
             ) : (
               <motion.ul key={`list-${view}`} className="tui-list" {...swap}>
@@ -401,7 +401,7 @@ export function TuiDemo() {
           ) : open ? (
             <Hints keys={[["j/k", "next/prev"], ["l", "activity"], ["x", "done"], ["esc", "back"]]} />
           ) : (
-            <Hints keys={[["↑↓", "move"], ["⏎", "open"], ["x", "done"], ["u", "undo"], ["1–7", "view"]]} />
+            <Hints keys={[["↑↓", "move"], ["⏎", "open"], ["x", "done"], ["u", "undo"], ["1–4", "view"]]} />
           )}
         </div>
       </div>
@@ -410,8 +410,8 @@ export function TuiDemo() {
       <figcaption id="tui-help" className="tui-caption">
         <span>
           {agentDone
-            ? "The agent just finished #9 and left a report (see the ●). Select it and press enter to read it."
-            : "This works like the real list. Click it, then press j, k, enter, x, u, or 1–7 to switch views. #15 is waiting on you (?)."}
+            ? "A session on #9 just left a report (see the ●). Select it and press enter to read it."
+            : "This works like the real list. Click it, then press j, k, enter, x, u, or 1–4 to switch views. #15 is waiting on you (?)."}
         </span>
         <span className="tui-keys" aria-label="On-screen keys">
           {[["k", "↑"], ["j", "↓"], ["Enter", "enter"], ["x", "x"], ["u", "u"], ["Tab", "tab"]].map(([k, label]) => (

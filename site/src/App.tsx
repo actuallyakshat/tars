@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { TuiDemo } from "./TuiDemo";
-import { Day } from "./Day";
-import { Habits, NeedsYou, NotJira, Reports, Status, SteerLess } from "./Story";
+import { Capture } from "./Capture";
+import { Control, Matching, Profiles, Reports, Surfaces, Threads, Unfiled } from "./Story";
 import { Mark } from "./Mark";
 import { Reveal, press } from "./Reveal";
 
@@ -10,10 +9,10 @@ import { Reveal, press } from "./Reveal";
 const REPO = "actuallyakshat/tars";
 const OWNER = REPO.split("/")[0];
 
-// The hero's load-in: one short staggered sequence.
+// The hero's load-in: one short staggered sequence, then the capture diagram plays.
 const heroItem = {
-  hidden: { opacity: 0, y: 12, filter: "blur(4px)" },
-  shown: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.7, ease: [0.2, 0.7, 0.2, 1] } },
+  hidden: { opacity: 0, y: 10 },
+  shown: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.2, 0.7, 0.2, 1] } },
 } as const;
 
 export function App() {
@@ -26,7 +25,7 @@ export function App() {
           <span>Tars</span>
         </a>
         <nav aria-label="Primary">
-          <a href="#reports">How it works</a>
+          <a href="#how">How it works</a>
           <a href="#install">Install</a>
           <a href={`https://github.com/${REPO}`}>GitHub</a>
         </nav>
@@ -41,113 +40,75 @@ export function App() {
           transition={{ staggerChildren: 0.08 }}
         >
           <div className="hero-copy">
-            <motion.div variants={heroItem}>
-              <motion.div
-                className="hero-mark"
-                whileHover={{ rotate: -8, scale: 1.04 }}
-                transition={{ type: "spring", stiffness: 300, damping: 14 }}
-              >
-                <Mark size={64} />
-              </motion.div>
-            </motion.div>
-            <motion.h1 variants={heroItem}>Stay on top of every agent, without reading every transcript</motion.h1>
+            <motion.h1 variants={heroItem}>Every Claude Code session, recorded and sorted</motion.h1>
             <motion.p className="lede" variants={heroItem}>
-              Tars is the task list you and Claude share. Agents report back in a few lines: what they did, how they
-              checked it, what they need from you. Questions wait in one place, every session is a command away, and
-              you steer less because Tars remembers how you want things done.
+              Install the plugin and Tars records each session you run in a git repo as it happens, and links it to
+              the task it was for. Agents leave a few lines on what they did. You get one place to see everything
+              your agents have done.
             </motion.p>
             <motion.div className="ctas" variants={heroItem}>
               <motion.a className="btn btn-primary" href="#install" {...press}>
                 <PromptIcon />
                 Install Tars
               </motion.a>
-              <motion.a className="btn btn-quiet" href="#reports" {...press}>
-                See how it works
-                <ChevronDownIcon />
+              <motion.a className="btn btn-quiet" href="#how" {...press}>
+                How capture works
               </motion.a>
             </motion.div>
           </div>
-          <motion.div className="hero-demo" variants={heroItem}>
-            <TuiDemo />
+          <motion.div className="hero-visual" variants={heroItem}>
+            <Capture />
           </motion.div>
         </motion.section>
 
+        <Matching />
+        <Threads />
+        <Unfiled />
         <Reports />
-        <NeedsYou />
-        <SteerLess />
-        <NotJira />
-        <Day />
-        <Habits />
-        <Status />
-
-        <section className="section charge" aria-labelledby="charge-title">
-          <Reveal>
-            <h2 id="charge-title">You stay in charge</h2>
-          </Reveal>
-          <dl className="rules">
-            <Reveal delay={0.00}>
-              <dt>Runs only when you ask</dt>
-              <dd>Every command is started by you. The agent never reads your list or picks up work on its own.</dd>
-            </Reveal>
-            <Reveal delay={0.05}>
-              <dt>Never pushes</dt>
-              <dd>Sweeps commit to local branches in separate worktrees. Your main checkout isn't touched.</dd>
-            </Reveal>
-            <Reveal delay={0.10}>
-              <dt>Shows its plan first</dt>
-              <dd>A sweep lists every task, branch and test command before it starts, unless you pass --yes.</dd>
-            </Reveal>
-            <Reveal delay={0.15}>
-              <dt>Asks instead of guessing</dt>
-              <dd>Anything unclear becomes a question in Needs you, not a wrong implementation.</dd>
-            </Reveal>
-            <Reveal delay={0.20}>
-              <dt>Logs who did what</dt>
-              <dd>Every change records whether you or the agent made it. A <span className="dot">●</span> marks agent work you haven't seen.</dd>
-            </Reveal>
-            <Reveal delay={0.25}>
-              <dt>Keeps your data local</dt>
-              <dd>One SQLite file on your machine. The CLI holds no credentials and never calls Jira itself.</dd>
-            </Reveal>
-          </dl>
-        </section>
+        <Surfaces />
+        <Profiles />
+        <Control />
 
         <section id="install" className="section install" aria-labelledby="install-title">
           <Reveal>
-            <h2 id="install-title">Try it tonight</h2>
-            <p className="section-lede">Three steps, about two minutes.</p>
+            <h2 id="install-title">Install</h2>
+            <p className="section-lede">The CLI and the plugin are all you need. The Mac app is optional.</p>
           </Reveal>
           <ol className="install-steps">
-            <Reveal as="li" delay={0.00}>
+            <Reveal as="li" delay={0.0}>
               <h3>Install the CLI</h3>
               <p>
-                One small binary. You don't need Go or anything else installed. On macOS, Homebrew asks you to
-                trust a new tap once before installing from it.
+                One small binary. You don&rsquo;t need Go or anything else installed. Homebrew asks you to trust a
+                new tap once before installing from it.
               </p>
               <Command text={`brew tap ${OWNER}/tap`} />
               <Command text={`brew trust --cask ${OWNER}/tap/tars`} />
               <Command text="brew install --cask tars" />
               <p className="alt">
                 Check it worked with <code>tars --version</code>. On Linux or Windows, download a binary from{" "}
-                <a href={`https://github.com/${REPO}/releases/latest`}>GitHub Releases</a>, or build it with{" "}
-                <code>go install github.com/{REPO}/cmd/tars@latest</code>.
+                <a href={`https://github.com/${REPO}/releases/latest`}>GitHub Releases</a>.
               </p>
             </Reveal>
-            <Reveal as="li" delay={0.08}>
+            <Reveal as="li" delay={0.06}>
               <h3>Add the plugin to Claude Code</h3>
-              <p>
-                Run these inside Claude Code. Later, <code>/plugin marketplace update tars</code> gets you new
-                versions.
-              </p>
+              <p>Run these inside Claude Code. Capture starts with your next session.</p>
               <Command text={`/plugin marketplace add ${REPO}`} />
               <Command text="/plugin install tars@tars" />
             </Reveal>
-            <Reveal as="li" delay={0.16}>
-              <h3>Tell it what's on your plate</h3>
+            <Reveal as="li" delay={0.12}>
+              <h3>Add the Mac app, if you want it</h3>
               <p>
-                Then run <code>tars</code> in any terminal to see your list.
+                It reads the same file as the CLI. Later, <code>/tars:update</code> upgrades the CLI, the plugin
+                and the app together.
               </p>
-              <Command text="/tars:tars fix the flaky login test by thursday" />
+              <Command text={`brew install --cask ${OWNER}/tap/tars-app`} />
+            </Reveal>
+            <Reveal as="li" delay={0.18}>
+              <h3>Work as you normally do</h3>
+              <p>
+                Open Claude Code in any git repo and start a session. Afterwards, run <code>tars</code> to see where
+                it was filed.
+              </p>
             </Reveal>
           </ol>
         </section>
@@ -155,7 +116,7 @@ export function App() {
         <section className="closing" aria-labelledby="closing-title">
           <Reveal className="closing-inner">
             <Mark size={40} />
-            <h2 id="closing-title">Hand the bookkeeping to your agent</h2>
+            <h2 id="closing-title">Your agents do the work. Tars keeps the record.</h2>
             <div className="ctas">
               <motion.a className="btn btn-primary" href="#install" {...press}>
                 <PromptIcon />
@@ -239,14 +200,6 @@ function PromptIcon() {
     <svg className="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M3 4.5 6.5 8 3 11.5" />
       <path d="M8.5 11.5H13" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg className="btn-icon btn-icon-down" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M4 6.5 8 10.5 12 6.5" />
     </svg>
   );
 }

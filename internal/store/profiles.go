@@ -20,10 +20,12 @@ type Section struct {
 }
 
 type Repo struct {
-	Name      string    `json:"name"`
-	Path      string    `json:"path,omitempty"`
-	UpdatedAt string    `json:"updated_at"`
-	Sections  []Section `json:"sections,omitempty"`
+	Name      string `json:"name"`
+	Path      string `json:"path,omitempty"`
+	UpdatedAt string `json:"updated_at"`
+	// CaptureOff stops tars capturing Claude sessions in this repo.
+	CaptureOff bool      `json:"capture_off,omitempty"`
+	Sections   []Section `json:"sections,omitempty"`
 }
 
 // UpsertRepo creates the repo if missing and updates its path when non-empty.
@@ -58,8 +60,8 @@ func (s *Store) SetRepoSection(repo, section, content string) error {
 
 func (s *Store) GetRepo(name string) (*Repo, error) {
 	var r Repo
-	err := s.db.QueryRow(`SELECT name, path, updated_at FROM repos WHERE name = ?`, name).
-		Scan(&r.Name, &r.Path, &r.UpdatedAt)
+	err := s.db.QueryRow(`SELECT name, path, updated_at, NOT capture FROM repos WHERE name = ?`, name).
+		Scan(&r.Name, &r.Path, &r.UpdatedAt, &r.CaptureOff)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("repo %q: %w", name, ErrNotFound)
 	}
@@ -68,6 +70,14 @@ func (s *Store) GetRepo(name string) (*Repo, error) {
 	}
 	r.Sections, err = s.sections(`SELECT section, content FROM repo_sections WHERE repo = ?`, name)
 	return &r, err
+}
+
+// resolve follows symlinks, keeping the path as given when it can't.
+func resolve(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return p
 }
 
 // FindRepoByPath returns the repo whose path contains dir (deepest match wins).
@@ -80,12 +90,15 @@ func (s *Store) FindRepoByPath(dir string) (*Repo, error) {
 	if err != nil {
 		return nil, err
 	}
+	abs = resolve(abs)
 	var best *Repo
 	for _, r := range repos {
 		if r.Path == "" {
 			continue
 		}
-		if abs == r.Path || strings.HasPrefix(abs, r.Path+string(filepath.Separator)) {
+		// Compare real paths: git reports /private/var where a profile may say /var.
+		p := resolve(r.Path)
+		if abs == p || strings.HasPrefix(abs, p+string(filepath.Separator)) {
 			if best == nil || len(r.Path) > len(best.Path) {
 				best = r
 			}
@@ -98,7 +111,7 @@ func (s *Store) FindRepoByPath(dir string) (*Repo, error) {
 }
 
 func (s *Store) ListRepos() ([]*Repo, error) {
-	rows, err := s.db.Query(`SELECT name, path, updated_at FROM repos ORDER BY name`)
+	rows, err := s.db.Query(`SELECT name, path, updated_at, NOT capture FROM repos ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +119,7 @@ func (s *Store) ListRepos() ([]*Repo, error) {
 	var out []*Repo
 	for rows.Next() {
 		var r Repo
-		if err := rows.Scan(&r.Name, &r.Path, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.Name, &r.Path, &r.UpdatedAt, &r.CaptureOff); err != nil {
 			return nil, err
 		}
 		out = append(out, &r)
@@ -143,8 +156,10 @@ func (s *Store) RenameRepo(from, to string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("repo %q: %w", from, ErrNotFound)
 	}
-	if _, err := tx.Exec(`UPDATE tasks SET repo = ? WHERE repo = ?`, to, from); err != nil {
-		return err
+	for _, q := range []string{`UPDATE tasks SET repo = ? WHERE repo = ?`, `UPDATE captures SET repo = ? WHERE repo = ?`} {
+		if _, err := tx.Exec(q, to, from); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

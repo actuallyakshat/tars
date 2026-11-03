@@ -4,12 +4,12 @@
     "name": "Akshat Dubey",
     "url": "https://github.com/actuallyakshat"
   },
-  "description": "A task list you and your coding agent share.",
+  "description": "One place for everything your coding agents do.",
   "plugins": [
     {
       "name": "tars",
       "source": "./plugin",
-      "description": "Your agent keeps your task list: /tars:tars, /tars:sweep, /tars:brief, /tars:park, /tars:update. Needs the tars CLI; see the README to install it with Homebrew."
+      "description": "Captures every Claude Code session into tars automatically; /tars:tars and /tars:update. Needs the tars CLI; see the README to install it with Homebrew."
     }
   ]
 }

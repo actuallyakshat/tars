@@ -61,7 +61,7 @@ type Entry struct {
 	ID     int64  `json:"id"`
 	At     string `json:"at"`
 	Author string `json:"author"` // "user" or "agent"
-	Kind   string `json:"kind"`   // note, park, sweep, test, status
+	Kind   string `json:"kind"`   // note, status, answer, …
 	Text   string `json:"text"`
 }
 

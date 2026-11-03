@@ -1,18 +1,19 @@
 # tars
 
-A task ledger that you and your coding agent share.
+One place for everything your coding agents do.
 
-- **You** get a fast CLI and a compact, keyboard-driven task list in the terminal (`tars`).
-- **Your agent** gets a JSON interface and a Claude Code plugin. Talk to it in plain language and it keeps the ledger: it captures raw notes, links Jiras, marks things done, and sweeps ready tasks into tested branches overnight.
+Install the Claude Code plugin and every Claude session in a git repo is captured on its own:
 
-The agent only touches the ledger when you invoke it. The plugin's skills can't be triggered by the model on its own.
+- **Linked to its task** when tars can tell which one: a `tars/<id>-…` branch, a branch, worktree or PR already on a task, or a Jira key in the branch or prompt. A feature worked on across many sessions is one task with every session on it; once the first one links, the rest on that branch follow.
+- **Asked about once** when only the wording resembles an open task: Claude checks with you, then links it.
+- **Held as Unfiled** when it changed code and matched nothing. You file it into a task, make it a new task, or dismiss it. Sessions that only read or answer questions leave nothing behind.
+
+Agents leave short reports on their tasks (what's done, how it was verified, what they need from you, what's next), so you read a few lines instead of a transcript, and resume the session when you want the detail.
 
 ```
-/tars:tars what's pending? which ones have a jira?
-/tars:tars fix the CSV export timeout in billing (BILL-881) by friday, also ping Rahul about staging keys
-/tars:sweep jira only
-/tars:brief
-/tars:park
+/tars:tars what did my agents do today?
+/tars:tars file my unfiled sessions
+/tars:tars fix the CSV export timeout in billing (BILL-881) by friday
 ```
 
 ## Install
@@ -38,6 +39,8 @@ To upgrade later: `brew upgrade --cask tars`.
 /plugin marketplace add actuallyakshat/tars
 /plugin install tars@tars
 ```
+
+Capture starts with your next session. Linking a session or recording a report runs `tars` through Bash, so allow it once (`Bash(tars:*)`) to skip the permission prompts. Turn capture off with `tars capture off`, or for one repo with `tars capture off --repo <name>`.
 
 **3. The desktop app (macOS, optional).** A window onto the same list; it uses the CLI above.
 
@@ -78,7 +81,19 @@ tars mv 12 ready               # statuses: inbox ready in-progress in-review blo
 tars done 12 14
 tars block 12 --on "Rahul (staging keys)" --follow-up thu
 tars note 12 "root cause: N+1 in exporter"
-tars brief                     # morning summary
+```
+
+### Captured sessions
+
+```bash
+tars unfiled                   # sessions that changed code but matched no task
+tars file 3f2a9c1e 21          # file one into #21 (a prefix of the session ID is enough)
+tars file 3f2a9c1e --new       # make it a new task, titled after the session
+tars dismiss 3f2a9c1e          # not task work
+tars link 21                   # from inside a Claude session: file this session under #21
+tars merge 31 21               # two tasks turned out to be the same work: fold #31 into #21
+tars sessions 21               # every session that worked on #21, with resume commands
+tars capture                   # what's captured; tars capture off [--repo <name>] to stop
 ```
 
 Dates accept `2026-11-03`, `today`, `tomorrow`, `fri`, `+3d`, `+2w`, and `none`. Every command takes `--json`.
@@ -101,30 +116,21 @@ Precedence: the repo's **CLAUDE.md / AGENTS.md** > tars repo profile > personal 
 
 ## The plugin
 
-| Command | What it does |
+| Part | What it does |
 |---|---|
-| `/tars:tars <anything>` | Ask questions, capture tasks from raw notes, triage the inbox into `ready` (pulls Jira details when the Atlassian tools are available), update tasks, save repo know-how, resume a parked task. |
-| `/tars:sweep [filter] [--yes]` | For each `ready` task: create a worktree on `tars/<id>-<slug>`, write tests for the acceptance criteria, implement, run the suite, check the DoD, and **commit locally**. The task moves to `in-review`, or to `blocked` with a question for you. Never pushes. |
-| `/tars:brief` | Morning review: what the sweep produced, questions waiting for you, what's due, follow-ups, and stale work. Suggests a focus for the day. |
-| `/tars:park [id]` | Saves goal, decisions, dead ends and the next step into the task log so the work can be resumed later. |
+| Capture hooks | On a session's first prompt, link it to its task (or ask you once when it's a guess). When it ends, hold it as Unfiled if it changed code and isn't linked. Silent when `tars` isn't installed or capture is off. |
+| `/tars:tars <anything>` | Ask what your agents did, file unfiled sessions, capture tasks from raw notes, update tasks, save repo know-how and personal preferences, pick up a task. |
 | `/tars:update [cli\|plugin\|app]` | Updates the CLI, this plugin and the desktop app to the latest release. Asks before installing anything you don't have, and leaves dev builds alone. |
 
-**The sweep runs unattended once you confirm the plan,** but it still goes through Claude Code's permission system. For an overnight run, set up allow rules for your test, build and git commands, or run the session in a sandboxed permission mode you trust.
-
-### Typical day
-
-1. During the day, dump work as it comes in: `/tars:tars …` or `tars add …` in any shell.
-2. In the evening, run `/tars:tars triage my inbox`. It fills in Jira details and acceptance criteria and asks you only for what's missing.
-3. At night, run `/tars:sweep jira only --yes`.
-4. In the morning, run `/tars:brief`, review the branches, and push the good ones yourself.
+The plugin never creates, edits or closes tasks on its own. Work that matches no task waits in Unfiled until you sort it.
 
 ## The macOS app
 
-`desktop/` holds a native macOS app (Tauri) for when you'd rather click than type: the same views (All, Needs you, Active, Done), the task list, and a detail pane with the agent's report, the linked Claude sessions (copy the resume command or open it in Terminal), and the activity log. You can answer questions, add notes and tasks, and change status from it. It reads and writes only through the `tars` CLI, so it needs a build that has `tars report`. See [desktop/README.md](desktop/README.md) to run or build it.
+`desktop/` holds a native macOS app (Tauri) for when you'd rather click than type: the same views (All, Needs you, Active, Done), Unfiled sessions to file or dismiss, the task list, and a detail pane with the agent's report, the linked Claude sessions (copy the resume command or open it in Terminal), and the activity log. You can answer questions, add notes and tasks, merge tasks, change status, and switch capture on or off from it. It reads and writes only through the `tars` CLI, so it needs a build that has `tars report`. See [desktop/README.md](desktop/README.md) to run or build it.
 
 ## Data
 
-Everything lives in one SQLite file at `~/.local/share/tars/tars.db`. Override the location with `$TARS_HOME` or `--db`. Parallel agents can write to it safely (WAL mode).
+Everything lives in one SQLite file at `~/.local/share/tars/tars.db`. Override the location with `$TARS_HOME` or `--db`. Parallel agents and hooks can write to it safely (WAL mode).
 
 ## Development
 

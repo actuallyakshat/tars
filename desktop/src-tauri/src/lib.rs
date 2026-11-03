@@ -182,6 +182,31 @@ async fn remove_repo(state: State<'_, AppState>, name: String) -> Result<Value> 
 }
 
 #[tauri::command]
+async fn list_unfiled(state: State<'_, AppState>) -> Result<Value> {
+    with_tars(state, |t| t.unfiled()).await
+}
+
+#[tauri::command]
+async fn file_session(state: State<'_, AppState>, session: String, into: Option<i64>, title: String) -> Result<Value> {
+    with_tars(state, move |t| t.file_session(&session, into, &title)).await
+}
+
+#[tauri::command]
+async fn dismiss_session(state: State<'_, AppState>, session: String) -> Result<Value> {
+    with_tars(state, move |t| t.dismiss(&session)).await
+}
+
+#[tauri::command]
+async fn merge_tasks(state: State<'_, AppState>, from: i64, into: i64) -> Result<Value> {
+    with_tars(state, move |t| t.merge(from, into)).await
+}
+
+#[tauri::command]
+async fn capture_settings(state: State<'_, AppState>, on: Option<bool>, repo: Option<String>) -> Result<Value> {
+    with_tars(state, move |t| t.capture(on, repo.as_deref())).await
+}
+
+#[tauri::command]
 async fn choose_folder() -> Result<Option<String>> {
     blocking(mac::choose_folder).await
 }
@@ -222,6 +247,11 @@ pub fn run() {
             get_profile,
             choose_folder,
             set_zoom,
+            list_unfiled,
+            file_session,
+            dismiss_session,
+            merge_tasks,
+            capture_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tars");

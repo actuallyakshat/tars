@@ -305,19 +305,6 @@ func TestRepoProfileAndContext(t *testing.T) {
 	e.fails("repo", "show", "billing")
 }
 
-func TestBriefJSON(t *testing.T) {
-	e := newEnv(t)
-	e.ok("add", "check me", "-s", "review")
-	e.ok("add", "due", "-d", "today")
-	b := decode[store.Brief](t, e.ok("brief", "--json"))
-	if len(b.InReview) != 1 || len(b.DueToday) != 1 || len(b.Inbox) != 1 {
-		t.Fatalf("brief: %+v", b)
-	}
-	if out := e.ok("brief"); !strings.Contains(out, "Waiting for your review") {
-		t.Fatalf("human brief: %s", out)
-	}
-}
-
 func TestReportAnswerAndSessions(t *testing.T) {
 	e := newEnv(t)
 	// Pretend to run inside a Claude Code session with a transcript on disk.

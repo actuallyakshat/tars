@@ -270,11 +270,36 @@ const OPEN_MODES: { id: OpenMode; label: string; help: string }[] = [
   { id: "full", label: "Full screen", help: "The task fills the window. Esc takes you back to the list." },
 ];
 
+// An on/off setting. on null means it hasn't loaded (or the CLI is too old to have it).
+export function Switch({ label, help, on, onChange }: { label: string; help?: string; on: boolean | null; onChange: (on: boolean) => void }) {
+  return (
+    <label className="switch-row">
+      <span className="switch-text">
+        <span className="switch-label">{label}</span>
+        {help && <span className="choice-help">{help}</span>}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={!!on}
+        aria-label={label}
+        disabled={on === null}
+        className={"switch" + (on ? " on" : "")}
+        onClick={() => on !== null && onChange(!on)}
+      >
+        <span className="switch-knob" />
+      </button>
+    </label>
+  );
+}
+
 export function SettingsPage({
   jiraBase,
   cli,
   openMode,
   onOpenMode,
+  captureOn,
+  onCapture,
   theme,
   onTheme,
   onSaveJira,
@@ -284,6 +309,8 @@ export function SettingsPage({
   cli: CliStatus | null;
   openMode: OpenMode;
   onOpenMode: (m: OpenMode) => void;
+  captureOn: boolean | null;
+  onCapture: (on: boolean) => void;
   theme: ThemePref;
   onTheme: (t: ThemePref) => void;
   onSaveJira: (base: string) => void;
@@ -345,6 +372,14 @@ export function SettingsPage({
                   </label>
                 ))}
               </div>
+
+              <h2 className="settings-gap">Session capture</h2>
+              <Switch
+                label="Capture Claude sessions"
+                help="With the Claude Code plugin installed, each session in a git repo is linked to its task, or waits in Unfiled when it changed code and matched none. Turn it off for one repo on the Repos page."
+                on={captureOn}
+                onChange={onCapture}
+              />
 
               <h2 className="settings-gap">tars command-line tool</h2>
               <p className="muted">The app reads and changes tasks only through this binary.</p>

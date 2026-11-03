@@ -1,0 +1,27 @@
+{
+  "description": "Capture every Claude Code session in a git repo into tars: link it to its task, or hold it as unfiled when it changed code. Silent when tars isn't installed or capture is off (tars capture off).",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v tars >/dev/null 2>&1 && tars hook prompt 2>/dev/null; exit 0",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v tars >/dev/null 2>&1 && tars hook end 2>/dev/null; exit 0",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

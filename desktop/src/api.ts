@@ -89,6 +89,33 @@ export interface Repo {
   name: string;
   path?: string;
   updated_at: string;
+  /** Claude sessions in this repo aren't captured. */
+  capture_off?: boolean;
+}
+
+/** A Claude session that changed code but isn't linked to a task yet. */
+export interface Capture {
+  session_id: string;
+  state: string;
+  task_id?: number;
+  repo?: string;
+  root?: string;
+  worktree?: string;
+  branch?: string;
+  /** The session's first prompt. */
+  prompt?: string;
+  edits: number;
+  commits: number;
+  files?: string[];
+  started_at: string;
+  ended_at?: string;
+  /** The session's title, from /rename or Claude. */
+  name?: string;
+}
+
+export interface CaptureSettings {
+  on: boolean;
+  off_repos: string[];
 }
 
 export interface Section {
@@ -150,4 +177,11 @@ export const api = {
   removeRepo: (name: string) => invoke("remove_repo", { name }),
   chooseFolder: () => invoke<string | null>("choose_folder"),
   zoom: (scale: number) => invoke<void>("set_zoom", { scale }),
+  unfiled: () => invoke<Capture[]>("list_unfiled"),
+  /** Files a session into task `into`, or a new task (titled `title`) when into is null. */
+  fileSession: (session: string, into: number | null, title = "") =>
+    invoke<{ task_id: number }>("file_session", { session, into, title }),
+  dismiss: (session: string) => invoke("dismiss_session", { session }),
+  merge: (from: number, into: number) => invoke("merge_tasks", { from, into }),
+  capture: (on: boolean | null = null, repo: string | null = null) => invoke<CaptureSettings>("capture_settings", { on, repo }),
 };

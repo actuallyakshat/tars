@@ -208,21 +208,6 @@ Suggested sections: ` + strings.Join(store.ProfileSections, ", ") + `. Any name 
 	return cmd
 }
 
-func briefCmd(a *app) *cobra.Command {
-	return &cobra.Command{
-		Use:   "brief",
-		Short: "Morning summary: reviews waiting, due, follow-ups, stale work",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			b, err := a.st.Brief()
-			if err != nil {
-				return err
-			}
-			return a.emit(b, func() string { return ui.Brief(b, a.width()) })
-		},
-	}
-}
-
 type agentContext struct {
 	Profile []store.Section `json:"profile"`
 	Repo    *store.Repo     `json:"repo,omitempty"`

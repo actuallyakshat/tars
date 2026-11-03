@@ -238,3 +238,68 @@ fn detect_skips_binaries_that_are_too_old() {
     assert_eq!(found.bin, tars_bin());
     assert_eq!(found.version().unwrap(), "dev");
 }
+
+impl Env {
+    /// Feeds a Claude Code hook event to tars, as the plugin's hooks do.
+    fn hook(&self, event: &str, input: &Value) {
+        use std::io::Write;
+        let mut child = Command::new(tars_bin())
+            .args(["hook", event])
+            .env("TARS_HOME", &self.home)
+            .env("CLAUDE_CONFIG_DIR", &self.claude)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(input.to_string().as_bytes()).unwrap();
+        assert!(child.wait().unwrap().success());
+    }
+}
+
+#[test]
+fn files_captured_sessions_and_merges_tasks() {
+    let e = env();
+    let t = &e.tars;
+    let repo = e.home.parent().unwrap().join("billing");
+    for args in [
+        vec!["init", "-q", "-b", "main", repo.to_str().unwrap()],
+        vec!["-C", repo.to_str().unwrap(), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"],
+    ] {
+        assert!(Command::new("git").args(&args).status().unwrap().success());
+    }
+    let transcript = e.home.parent().unwrap().join("t.jsonl");
+    std::fs::write(
+        &transcript,
+        "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Write\",\"input\":{\"file_path\":\"/x\"}}]}}\n",
+    )
+    .unwrap();
+    for s in ["sess-a", "sess-b"] {
+        let input = serde_json::json!({"session_id": s, "cwd": repo, "prompt": format!("Speed up exports {s}"), "transcript_path": transcript});
+        e.hook("prompt", &input);
+        e.hook("end", &input);
+    }
+
+    let unfiled = t.unfiled().unwrap();
+    assert_eq!(unfiled.as_array().unwrap().len(), 2);
+    assert_eq!(unfiled[0]["repo"], "billing");
+    assert_eq!(unfiled[0]["edits"], 1);
+
+    let filed = t.file_session("sess-a", None, "Faster exports").unwrap();
+    let id = filed["task_id"].as_i64().unwrap();
+    assert_eq!(t.show(id).unwrap()["title"], "Faster exports");
+    t.dismiss("sess-b").unwrap();
+    assert_eq!(t.unfiled().unwrap(), Value::Array(vec![]));
+
+    let other = t.add(&NewTask { title: "Exports, again".into(), ..Default::default() }).unwrap()["id"].as_i64().unwrap();
+    t.file_session("sess-b", Some(other), "").unwrap();
+    t.merge(other, id).unwrap();
+    let merged = t.show(id).unwrap();
+    assert_eq!(merged["sessions"].as_array().unwrap().len(), 2);
+    assert_eq!(t.show(other).unwrap_err().kind, ErrorKind::Failed);
+
+    assert_eq!(t.capture(None, None).unwrap()["on"], true);
+    assert_eq!(t.capture(Some(false), None).unwrap()["on"], false);
+    t.set_repo("billing", repo.to_str().unwrap(), None).unwrap();
+    assert_eq!(t.capture(Some(false), Some("billing")).unwrap()["off_repos"], serde_json::json!(["billing"]));
+    assert_eq!(t.repos().unwrap()[0]["capture_off"], true);
+}

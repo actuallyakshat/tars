@@ -1,23 +1,25 @@
 import { Mark } from "../Mark";
 import { VIEWS, DONE } from "../model";
 
-export type PageName = "list" | "new" | "edit" | "repos" | "settings" | "legend";
+export type PageName = "list" | "new" | "edit" | "repos" | "settings" | "legend" | "unfiled";
 
 interface Props {
   counts: { total: number; unread: number }[];
+  /** Captured sessions waiting to be filed. */
+  unfiled: number;
   view: number;
   page: PageName;
   onView: (i: number) => void;
   onPage: (p: PageName) => void;
 }
 
-export function Sidebar({ counts, view, page, onView, onPage }: Props) {
+export function Sidebar({ counts, unfiled, view, page, onView, onPage }: Props) {
   return (
     <nav className="sidebar" aria-label="Views">
       <div className="drag sidebar-top" data-tauri-drag-region />
       <div className="brand">
         <Mark size={20} />
-        <span>tars</span>
+        <span>Tars</span>
       </div>
       <button
         className={"new-task-button" + (page === "new" ? " on" : "")}
@@ -52,6 +54,24 @@ export function Sidebar({ counts, view, page, onView, onPage }: Props) {
             </li>
           );
         })}
+        <li className="views-gap">
+          <button
+            className={"view" + (page === "unfiled" ? " on" : "")}
+            aria-current={page === "unfiled" ? "page" : undefined}
+            onClick={() => onPage("unfiled")}
+            title="Sessions that changed code but didn't match a task"
+          >
+            <span className="view-name">Unfiled</span>
+            {unfiled > 0 && (
+              <span className="dot" aria-label={`${unfiled} sessions to file`}>
+                ●
+              </span>
+            )}
+            <span className="view-count" data-testid="count-unfiled">
+              {unfiled}
+            </span>
+          </button>
+        </li>
       </ul>
       <div className="sidebar-foot">
         <button

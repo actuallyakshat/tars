@@ -1,7 +1,187 @@
+import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { Reveal } from "./Reveal";
+import { TuiDemo } from "./TuiDemo";
 
-// The sections that explain what tars is for. Copy is written for an engineer
-// who already runs Claude Code and wonders why this isn't just Jira.
+// The sections that explain Tars, in the order a new reader needs them:
+// how capture decides, what a task collects, what waits for you, and where you read it.
+
+const signals: [string, string, string][] = [
+  ["A branch named for a task", "tars/15-webhook-retry", "Links to #15"],
+  ["A branch, worktree or pull request already on a task", "feat/audit-pagination", "Links to the task that has it"],
+  ["A Jira key in the branch name or the prompt", "BILL-881", "Links to the task with that key"],
+  ["Words that resemble a few open tasks", "“remove the old checkout flags”", "Claude asks you once which one, or none"],
+];
+
+export function Matching() {
+  return (
+    <section id="how" className="section" aria-labelledby="how-title">
+      <Reveal>
+        <h2 id="how-title">How a session finds its task</h2>
+        <p className="section-lede">
+          With the Claude Code plugin installed, Tars reads the first prompt of every session in a git repo and
+          checks these in order. The first one that matches decides. The first three link without asking you
+          anything.
+        </p>
+      </Reveal>
+      <Reveal delay={0.08}>
+        <ol className="signals">
+          {signals.map(([what, example, result]) => (
+            <li key={what}>
+              <span className="signal-what">{what}</span>
+              <code className="signal-example">{example}</code>
+              <span className="signal-result">{result}</span>
+            </li>
+          ))}
+        </ol>
+      </Reveal>
+    </section>
+  );
+}
+
+const threads: { day: string; prompt: string; how: string; id: string }[] = [
+  { day: "Mon", prompt: "BILL-881 export still times out for Acme", how: "Linked by Jira key. Branch fix/csv-export recorded.", id: "4be1c9d0" },
+  { day: "Mon", prompt: "batch the account lookups in the exporter", how: "Linked by branch", id: "9d02e7b1" },
+  { day: "Tue", prompt: "stream rows instead of buffering them", how: "Linked by branch", id: "1c88fa43" },
+  { day: "Wed", prompt: "show progress while the export runs", how: "Linked by branch", id: "e5a7302c" },
+];
+
+export function Threads() {
+  return (
+    <section className="section split" aria-labelledby="threads-title">
+      <Reveal className="split-copy">
+        <h2 id="threads-title">One feature, every thread</h2>
+        <p>
+          Real features take more than one session. Tars keeps them as one task with every session linked to it.
+          Once the first thread links, its branch is recorded on the task, so later threads on that branch link
+          on their own.
+        </p>
+        <p>
+          Any of them can be reopened with <code>claude --resume</code>. If two tasks turn out to be the same work,{" "}
+          <code>tars merge 31 21</code> moves the sessions, reports and log of #31 into #21.
+        </p>
+      </Reveal>
+      <Reveal className="split-visual" delay={0.1}>
+        <div className="thread-task">
+          <p className="thread-title">
+            <span className="task-id">#12</span> Fix CSV export timeout for large accounts
+          </p>
+          <ol className="thread-list" aria-label="Sessions linked to #12, oldest first">
+            {threads.map((t) => (
+              <li key={t.id}>
+                <span className="thread-day">{t.day}</span>
+                <span className="thread-prompt">{t.prompt}</span>
+                <span className="thread-how">{t.how}</span>
+                <code className="thread-resume">claude --resume {t.id}</code>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
+type Choice = "file" | "new" | "dismiss";
+
+const unfiled = [
+  { id: "7c2e91", repo: "billing-svc", branch: "main", prompt: "bump the retry jitter to 20%", changes: "1 edit, 1 commit", task: 15 },
+  { id: "3f9a12", repo: "platform", branch: "spike-nats", prompt: "spin up nats locally and send it test messages", changes: "6 edits", task: 21 },
+  { id: "b40d5e", repo: "web", branch: "fix-footer", prompt: "fix the typo in the footer", changes: "2 edits", task: 0 },
+];
+
+export function Unfiled() {
+  const [picked, setPicked] = useState<Record<string, Choice>>({});
+  // The row the visitor last acted on gets focus back after its buttons swap.
+  const [acted, setActed] = useState("");
+  const [said, setSaid] = useState("");
+  const choose = (id: string, c: Choice | null, msg: string) => {
+    setActed(id);
+    setSaid(msg);
+    setPicked((p) => {
+      const next = { ...p };
+      if (c) next[id] = c;
+      else delete next[id];
+      return next;
+    });
+  };
+
+  return (
+    <section id="unfiled" className="section split" aria-labelledby="unfiled-title">
+      <Reveal className="split-copy">
+        <h2 id="unfiled-title">Nothing lands in your list uninvited</h2>
+        <p>
+          Capture links sessions to tasks. It never creates, edits or closes a task on its own.
+        </p>
+        <p>
+          A session that changed code but matched no task waits under <strong>Unfiled</strong>. You file it into a
+          task, make it a new task, or dismiss it. Sessions that only read code or answered a question leave
+          nothing behind.
+        </p>
+        <p className="split-note">Try it on the right. The same choices are in the Mac app, in <code>/tars:tars</code>, and on the command line.</p>
+      </Reveal>
+      <Reveal className="split-visual" delay={0.1}>
+        <p className="visually-hidden" aria-live="polite">{said}</p>
+        <ul className="unfiled" aria-label="Unfiled sessions">
+          {unfiled.map((s, i) => {
+            const c = picked[s.id];
+            const cmd =
+              c === "file" ? `tars file ${s.id} ${s.task}` : c === "new" ? `tars file ${s.id} --new` : `tars dismiss ${s.id}`;
+            const done =
+              c === "file" ? `Filed into #${s.task}` : c === "new" ? `Filed as new task #${31 + i}` : "Dismissed";
+            return (
+              <li key={s.id} className={c ? "is-sorted" : undefined}>
+                <p className="unfiled-prompt">{s.prompt}</p>
+                <p className="unfiled-meta">
+                  <code>{s.repo}</code> <code>{s.branch}</code> <span>{s.changes}</span>
+                </p>
+                <AnimatePresence mode="wait" initial={false}>
+                  {c ? (
+                    <motion.div
+                      key="done"
+                      className="unfiled-done"
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.18 }}
+                    >
+                      <span className={c === "dismiss" ? "unfiled-status is-dismissed" : "unfiled-status"}>{done}</span>
+                      <code className="unfiled-cmd">{cmd}</code>
+                      <button type="button" className="text-btn" autoFocus={acted === s.id} onClick={() => choose(s.id, null, "Undone")}>
+                        Undo
+                      </button>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="actions"
+                      className="unfiled-actions"
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.18 }}
+                    >
+                      {s.task > 0 && (
+                        <button type="button" autoFocus={acted === s.id} onClick={() => choose(s.id, "file", `Filed into #${s.task}`)}>
+                          File into #{s.task}
+                        </button>
+                      )}
+                      <button type="button" autoFocus={acted === s.id && s.task === 0} onClick={() => choose(s.id, "new", `Filed as new task #${31 + i}`)}>
+                        New task
+                      </button>
+                      <button type="button" onClick={() => choose(s.id, "dismiss", "Dismissed")}>
+                        Dismiss
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </li>
+            );
+          })}
+        </ul>
+      </Reveal>
+    </section>
+  );
+}
 
 export function Reports() {
   return (
@@ -9,9 +189,9 @@ export function Reports() {
       <Reveal>
         <h2 id="reports-title">Read what your agents did, not everything they said</h2>
         <p className="section-lede">
-          Run five agents at once and you get five long terminal threads to scroll through. With Tars, each agent
-          finishes by writing a short report on its task: what changed, how it was checked, and what it needs from
-          you. The full conversation is one command away if you want it.
+          When an agent finishes work on a task, it leaves a short report: what it did, how it checked, what it
+          needs from you, and what comes next. Each field is capped at 240 characters, so a report takes seconds
+          to read. The full session is still one <code>claude --resume</code> away.
         </p>
       </Reveal>
       <div className="compare">
@@ -29,7 +209,7 @@ export function Reports() {
           <p className="compare-label">In Tars</p>
           <div className="report-card">
             <p className="report-head">
-              <span className="report-id">#15</span> Add retry with backoff to webhook sender
+              <span className="task-id">#15</span> Add retry with backoff to webhook sender
             </p>
             <dl>
               <dt>Done</dt>
@@ -38,8 +218,10 @@ export function Reports() {
               <dd>make test: 212 passed (6 new)</dd>
               <dt>Needs you</dt>
               <dd className="ask">Alert #oncall or #billing-alerts after the last retry?</dd>
+              <dt>Next</dt>
+              <dd>Wire the alert once you pick a channel</dd>
               <dt>Session</dt>
-              <dd><code>claude --resume 8f3c21aa…</code></dd>
+              <dd><code>claude --resume 8f3c21aa</code></dd>
             </dl>
           </div>
         </Reveal>
@@ -48,191 +230,129 @@ export function Reports() {
   );
 }
 
-export function NeedsYou() {
+export function Surfaces() {
   return (
-    <section className="section split" aria-labelledby="needs-title">
-      <Reveal className="split-copy">
-        <h2 id="needs-title">Every question waits in one place</h2>
-        <p>
-          When an agent can't decide something on its own, it doesn't guess and it doesn't stall a whole run. It
-          leaves one clear question on the task and moves on.
-        </p>
-        <p>
-          Open Tars and the <strong>Needs you</strong> view lists every open question across all your agents.
-          Answer in a few words, and the next agent that picks up the task reads your answer. When you want the
-          full story, copy the <code>claude --resume</code> command and you're back in that exact session.
-        </p>
-      </Reveal>
-      <Reveal className="split-visual" delay={0.1}>
-        <ol className="qa">
-          <li>
-            <span className="qa-id">#15</span>
-            <span className="qa-q">Alert #oncall or #billing-alerts after the last retry?</span>
-            <span className="qa-a">billing-alerts</span>
-          </li>
-          <li>
-            <span className="qa-id">#12</span>
-            <span className="qa-q">Show export progress in the UI, or only in logs?</span>
-            <span className="qa-a">UI, a simple progress bar</span>
-          </li>
-          <li>
-            <span className="qa-id">#21</span>
-            <span className="qa-q">Which repo should the event bus ADR live in?</span>
-            <span className="qa-a pending">waiting for you</span>
-          </li>
-        </ol>
-      </Reveal>
-    </section>
-  );
-}
-
-export function SteerLess() {
-  return (
-    <section className="section split" aria-labelledby="steer-title">
-      <Reveal className="split-copy">
-        <h2 id="steer-title">Steer less</h2>
-        <p>
-          CLAUDE.md is the same for every task. Real work isn't: "this ticket can't touch the public API" or "keep
-          the old CSV format for this customer" only applies to one task.
-        </p>
-        <p>
-          Tars layers your preferences and hands the agent the right mix for the task in front of it. The most
-          specific one wins, except your team's CLAUDE.md, which always comes first. Repo and personal preferences
-          work today; per-ticket decisions, with clashes caught before the work starts, arrive with grilling.
-        </p>
-      </Reveal>
-      <Reveal className="split-visual" delay={0.1}>
-        <ol className="layers" aria-label="What the agent reads, highest priority first">
-          <li>
-            <span className="layer-name">CLAUDE.md</span>
-            <span className="layer-note">Your team's hard rules. "Schema changes only through migrations."</span>
-          </li>
-          <li className="layer-ticket">
-            <span className="layer-name">This ticket</span>
-            <span className="layer-note">"Stream the CSV as one file. A 500-line PR is fine here."</span>
-          </li>
-          <li>
-            <span className="layer-name">This repo</span>
-            <span className="layer-note">"Exports paginate with cursors. Use testcontainers, not mocks."</span>
-          </li>
-          <li>
-            <span className="layer-name">You</span>
-            <span className="layer-note">"Small PRs. Plain commit messages."</span>
-          </li>
-        </ol>
-      </Reveal>
-    </section>
-  );
-}
-
-const jiraRows: [string, string, string][] = [
-  ["Who it's for", "Your team and your manager", "You and your agents"],
-  ["What it keeps", "Status, assignee, comments", "Decisions, answered questions, agent reports"],
-  ["Small personal tasks", "Rarely worth a ticket", "\"Ping Rahul\" is a task too"],
-  ["Agent sessions", "Not tracked", "Linked to the task, resumable"],
-  ["Questions from agents", "Lost in a terminal", "Waiting in Needs you"],
-];
-
-export function NotJira() {
-  return (
-    <section className="section" aria-labelledby="jira-title">
+    <section id="surfaces" className="section" aria-labelledby="surfaces-title">
       <Reveal>
-        <h2 id="jira-title">Why not just use Jira?</h2>
+        <h2 id="surfaces-title">Read it wherever you are</h2>
         <p className="section-lede">
-          Keep using it. Jira tracks the work for your team. Tars sits between the ticket and your agent: it holds
-          the context the ticket never had, and the results your team doesn't need to read. Mention a ticket key and
-          the agent pulls its details in; nothing has to move out of Jira.
+          The terminal list, Claude Code and the Mac app all read and write the same SQLite file on your machine.
+          Below is the terminal list. It works with your keyboard.
         </p>
       </Reveal>
-      <Reveal delay={0.1}>
-        <table className="versus">
-          <thead>
-            <tr>
-              <th scope="col"><span className="visually-hidden">Aspect</span></th>
-              <th scope="col">Jira</th>
-              <th scope="col">Tars</th>
-            </tr>
-          </thead>
-          <tbody>
-            {jiraRows.map(([aspect, jira, tars]) => (
-              <tr key={aspect}>
-                <th scope="row">{aspect}</th>
-                <td>{jira}</td>
-                <td>{tars}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <Reveal className="surfaces-demo" delay={0.08}>
+        <TuiDemo />
+      </Reveal>
+      <dl className="surfaces">
+        <Reveal delay={0.0}>
+          <dt>In the terminal</dt>
+          <dd>
+            Run <code>tars</code> for the keyboard-driven list. Every command also takes <code>--json</code>, so
+            scripts and agents can read the same data.
+          </dd>
+        </Reveal>
+        <Reveal delay={0.05}>
+          <dt>In Claude Code</dt>
+          <dd>
+            Ask in plain language: <code>/tars:tars what did my agents finish today?</code> Keep everything
+            current with <code>/tars:update</code>.
+          </dd>
+        </Reveal>
+        <Reveal delay={0.1}>
+          <dt>On your Mac</dt>
+          <dd>
+            The Tars app shows All, Needs you, Active and Done, your Unfiled sessions, each task&rsquo;s reports
+            and sessions, and a Repos page for per-repo preferences.
+          </dd>
+        </Reveal>
+      </dl>
+    </section>
+  );
+}
+
+export function Profiles() {
+  return (
+    <section className="section split" aria-labelledby="profiles-title">
+      <Reveal className="split-copy">
+        <h2 id="profiles-title">Tell it once how you work</h2>
+        <p>
+          A repo profile holds what every agent in that repo should know: the definition of done, how to run the
+          tests, the gotchas. Your personal profile holds how you like things done anywhere.
+        </p>
+        <p>
+          Agents read both with <code>tars context</code> before they start. The repo&rsquo;s own CLAUDE.md still
+          comes first.
+        </p>
+      </Reveal>
+      <Reveal className="split-visual" delay={0.1}>
+        <div className="profiles">
+          <div className="profile">
+            <p className="profile-name">billing-svc</p>
+            <dl>
+              <dt>dod</dt>
+              <dd>Tests pass, migration reviewed, changelog entry added.</dd>
+              <dt>tests</dt>
+              <dd>
+                <code>docker compose up db</code>, then <code>make test</code>.
+              </dd>
+              <dt>gotchas</dt>
+              <dd>Exports read from the replica. Never write there.</dd>
+            </dl>
+          </div>
+          <div className="profile">
+            <p className="profile-name">You</p>
+            <dl>
+              <dt>style</dt>
+              <dd>Small PRs. Plain commit messages.</dd>
+              <dt>review</dt>
+              <dd>Flag any change to a public API before making it.</dd>
+            </dl>
+          </div>
+        </div>
       </Reveal>
     </section>
   );
 }
 
-const habits: [string, string][] = [
-  ["Dump everything as it comes", "Half-sentences are fine. Splitting, dates, Jira keys and repos are the agent's job."],
-  ["Settle questions before work starts", "Ten minutes answering questions about a task saves a wasted night of guessing."],
-  ["Keep tasks small", "One task, one reviewable branch. Smaller tasks mean shorter reports and easier reviews."],
-  ["Answer from Needs you, not the terminal", "Your answer is stored on the task, so whichever agent picks it up next knows."],
-  ["Start the day with the brief", "Read the reports, answer what's waiting, push only what you'd sign off on."],
-];
-
-export function Habits() {
+export function Control() {
   return (
-    <section className="section" aria-labelledby="habits-title">
+    <section className="section" aria-labelledby="control-title">
       <Reveal>
-        <h2 id="habits-title">Getting the most out of it</h2>
-        <p className="section-lede">Five habits that make the difference between a to-do list and a team.</p>
+        <h2 id="control-title">You decide what&rsquo;s kept</h2>
       </Reveal>
-      <ol className="habits">
-        {habits.map(([title, text], i) => (
-          <Reveal as="li" key={title} delay={i * 0.05}>
-            <h3>{title}</h3>
-            <p>{text}</p>
-          </Reveal>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-export function Status() {
-  return (
-    <section className="section" aria-labelledby="status-title">
-      <Reveal>
-        <h2 id="status-title">Where Tars is today</h2>
-        <p className="section-lede">Tars is young and moving fast. Here's what works now and what's coming next.</p>
-      </Reveal>
-      <div className="status-grid">
-        <Reveal className="status-col">
-          <h3>Available now</h3>
-          <ul>
-            <li>Capture tasks in plain words from Claude Code or any terminal</li>
-            <li>Short agent reports, with a Needs you view for open questions</li>
-            <li>Every Claude session linked to its task, one command to resume</li>
-            <li>Repo and personal profiles the agent reads before working</li>
-            <li>Overnight sweeps into separate, tested branches; a morning brief</li>
-            <li>A fast keyboard-driven terminal app</li>
-          </ul>
+      <dl className="rules">
+        <Reveal delay={0.0}>
+          <dt>Capture only links</dt>
+          <dd>Capture files sessions under tasks. It never creates, edits or closes a task by itself.</dd>
         </Reveal>
-        <Reveal className="status-col status-next" delay={0.1}>
-          <h3>Coming next</h3>
-          <ul>
-            <li>
-              <strong>Grilling:</strong> a relentless interview that settles every open question before a task is
-              marked ready, built on{" "}
-              <a href="https://github.com/mattpocock/skills">Matt Pocock's grilling skill</a> and shipped with Tars
-              (MIT, credited).
-            </li>
-            <li>
-              <strong>Learning:</strong> Tars notices your corrections and turns them into repo preferences on its
-              own, and always tells you when it does.
-            </li>
-            <li>
-              <strong>A macOS app</strong> for reading reports, answering questions and opening sessions.
-            </li>
-          </ul>
+        <Reveal delay={0.05}>
+          <dt>Unmatched work waits</dt>
+          <dd>Sessions that changed code and matched nothing sit in Unfiled until you sort them.</dd>
         </Reveal>
-      </div>
+        <Reveal delay={0.1}>
+          <dt>Turn capture off</dt>
+          <dd>
+            Everywhere with <code>tars capture off</code>, or for one repo with{" "}
+            <code>tars capture off --repo billing-svc</code>.
+          </dd>
+        </Reveal>
+        <Reveal delay={0.15}>
+          <dt>Merge duplicates</dt>
+          <dd>
+            <code>tars merge 31 21</code> folds #31 into #21, with its sessions, reports and log.
+          </dd>
+        </Reveal>
+        <Reveal delay={0.2}>
+          <dt>Shows what&rsquo;s new</dt>
+          <dd>
+            A <span className="dot">●</span> marks agent work you haven&rsquo;t seen yet.
+          </dd>
+        </Reveal>
+        <Reveal delay={0.25}>
+          <dt>Keeps your data local</dt>
+          <dd>Everything is in one SQLite file on your machine.</dd>
+        </Reveal>
+      </dl>
     </section>
   );
 }

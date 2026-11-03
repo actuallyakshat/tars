@@ -1,17 +1,17 @@
 {
   "name": "tars",
   "version": "0.3.1",
-  "description": "Your agent keeps your task list, triages raw notes into ready work, and sweeps ready tasks into tested branches. Only ever runs when you invoke it.",
+  "description": "One place for everything your coding agents do. Captures every Claude Code session into tars, linked to its task or held as unfiled for you to sort, plus /tars:tars to ask about it and /tars:update.",
   "author": {
     "name": "Akshat Dubey",
     "url": "https://github.com/actuallyakshat"
   },
   "keywords": [
     "tasks",
-    "todo",
+    "agents",
+    "sessions",
     "jira",
-    "worktrees",
-    "productivity"
+    "control-plane"
   ],
   "homepage": "https://github.com/actuallyakshat/tars",
   "repository": "https://github.com/actuallyakshat/tars",

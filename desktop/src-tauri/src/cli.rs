@@ -234,6 +234,49 @@ pub mod args {
         vec!["repo".into(), "rm".into(), "--".into(), name.into()]
     }
 
+    pub fn unfiled() -> Vec<String> {
+        vec!["unfiled".into()]
+    }
+
+    /// Files a captured session into task `into`, or into a new task when
+    /// `into` is None (titled `title`, or the session's own title if empty).
+    pub fn file_session(session: &str, into: Option<i64>, title: &str) -> Vec<String> {
+        let mut a = vec!["file".to_string()];
+        match into {
+            Some(id) => {
+                a.extend(["--".into(), session.into(), id.to_string()]);
+            }
+            None => {
+                a.push("--new".into());
+                if !title.trim().is_empty() {
+                    a.push(format!("--title={}", title.trim()));
+                }
+                a.extend(["--".into(), session.into()]);
+            }
+        }
+        a
+    }
+
+    pub fn dismiss(session: &str) -> Vec<String> {
+        vec!["dismiss".into(), "--".into(), session.into()]
+    }
+
+    pub fn merge(from: i64, into: i64) -> Vec<String> {
+        vec!["merge".into(), from.to_string(), into.to_string()]
+    }
+
+    /// Reads the capture switches, or sets one: everywhere, or for one repo.
+    pub fn capture(on: Option<bool>, repo: Option<&str>) -> Vec<String> {
+        let mut a = vec!["capture".to_string()];
+        if let Some(on) = on {
+            a.push(if on { "on" } else { "off" }.into());
+        }
+        if let Some(r) = repo {
+            a.push(format!("--repo={r}"));
+        }
+        a
+    }
+
     /// Values use --flag=value so an empty one clears the field and one
     /// starting with "-" isn't read as a flag.
     pub fn edit(id: i64, e: &TaskEdit) -> Vec<String> {
@@ -399,6 +442,42 @@ impl Tars {
 
     pub fn remove_repo(&self, name: &str) -> Result<Value> {
         parse_object(&self.run(&args::remove_repo(name))?)
+    }
+
+    /// Claude sessions that changed code but aren't linked to a task.
+    /// A CLI from before capture has no `unfiled`; that's an empty list, not
+    /// an outdated binary (which would make the app look for another one).
+    pub fn unfiled(&self) -> Result<Value> {
+        let out = match self.run(&args::unfiled()) {
+            Err(e) if e.kind == ErrorKind::TooOld && e.message.contains("unknown command") => {
+                return Ok(Value::Array(vec![]))
+            }
+            r => r?,
+        };
+        let v = parse_json(&out)?;
+        match &v {
+            Value::Array(items) if items.iter().all(|c| c.get("session_id").is_some()) => Ok(v),
+            _ => Err(CliError::new(ErrorKind::BadOutput, "Expected a list of sessions from tars.")),
+        }
+    }
+
+    pub fn file_session(&self, session: &str, into: Option<i64>, title: &str) -> Result<Value> {
+        parse_object(&self.run(&args::file_session(session, into, title))?)
+    }
+
+    pub fn dismiss(&self, session: &str) -> Result<Value> {
+        parse_object(&self.run(&args::dismiss(session))?)
+    }
+
+    pub fn merge(&self, from: i64, into: i64) -> Result<Value> {
+        if from == into {
+            return Err(CliError::new(ErrorKind::Failed, "Pick a different task to merge into."));
+        }
+        parse_object(&self.run(&args::merge(from, into))?)
+    }
+
+    pub fn capture(&self, on: Option<bool>, repo: Option<&str>) -> Result<Value> {
+        parse_object(&self.run(&args::capture(on, repo))?)
     }
 
     /// Deletes a task for good, with its log, reports and session links.
@@ -676,6 +755,18 @@ mod tests {
         let t = Tars::new("/nonexistent/tars");
         assert_eq!(t.set_repo("x", "code/x", None).unwrap_err().kind, ErrorKind::Failed);
         assert_eq!(t.set_repo(" ", "/w/x", None).unwrap_err().message, "A repo needs a name.");
+    }
+
+    #[test]
+    fn capture_args() {
+        assert_eq!(args::file_session("-abc", Some(21), "ignored"), ["file", "--", "-abc", "21"]);
+        assert_eq!(args::file_session("abc", None, "  "), ["file", "--new", "--", "abc"]);
+        assert_eq!(args::file_session("abc", None, " -Retry "), ["file", "--new", "--title=-Retry", "--", "abc"]);
+        assert_eq!(args::dismiss("abc"), ["dismiss", "--", "abc"]);
+        assert_eq!(args::merge(3, 1), ["merge", "3", "1"]);
+        assert_eq!(args::capture(None, None), ["capture"]);
+        assert_eq!(args::capture(Some(false), Some("billing")), ["capture", "off", "--repo=billing"]);
+        assert_eq!(Tars::new("/nonexistent/tars").merge(2, 2).unwrap_err().kind, ErrorKind::Failed);
     }
 
     #[test]

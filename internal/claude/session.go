@@ -4,9 +4,11 @@ package claude
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // SessionEnv is set by Claude Code in every shell command it runs.
@@ -90,3 +92,78 @@ func Inspect(configDir, id string) Session {
 // ResumeCommand is what the user runs to reopen a session. It works from any
 // directory.
 func ResumeCommand(id string) string { return "claude --resume " + id }
+
+// Work is what a session changed, read from its transcript.
+type Work struct {
+	Edits   int      // file edits and writes
+	Commits int      // git commits run through Bash
+	Files   []string // files edited, in first-touched order
+	// Shell reports tools that can change files without saying which: Bash
+	// (sed, heredocs, scripts) and subagents, whose own calls live in
+	// separate transcripts.
+	Shell bool
+}
+
+// editTools are the tools that change files.
+var editTools = map[string]bool{"Edit": true, "Write": true, "MultiEdit": true, "NotebookEdit": true}
+
+// ReadWork scans a transcript for edits and commits. A missing or unreadable
+// transcript counts as no work.
+func ReadWork(transcript string) Work {
+	var w Work
+	f, err := os.Open(transcript)
+	if err != nil {
+		return w
+	}
+	defer f.Close()
+	seen := map[string]bool{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 1<<20), 64<<20)
+	for sc.Scan() {
+		line := sc.Bytes()
+		if !bytes.Contains(line, []byte(`"tool_use"`)) {
+			continue
+		}
+		var e struct {
+			Message struct {
+				Content []struct {
+					Type  string `json:"type"`
+					Name  string `json:"name"`
+					Input struct {
+						FilePath     string `json:"file_path"`
+						NotebookPath string `json:"notebook_path"`
+						Command      string `json:"command"`
+					} `json:"input"`
+				} `json:"content"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(line, &e) != nil {
+			continue
+		}
+		for _, c := range e.Message.Content {
+			if c.Type != "tool_use" {
+				continue
+			}
+			switch {
+			case editTools[c.Name]:
+				w.Edits++
+				p := c.Input.FilePath
+				if p == "" {
+					p = c.Input.NotebookPath
+				}
+				if p != "" && !seen[p] {
+					seen[p] = true
+					w.Files = append(w.Files, p)
+				}
+			case c.Name == "Bash":
+				w.Shell = true
+				if strings.Contains(c.Input.Command, "git commit") {
+					w.Commits++
+				}
+			case c.Name == "Agent" || c.Name == "Task":
+				w.Shell = true
+			}
+		}
+	}
+	return w
+}

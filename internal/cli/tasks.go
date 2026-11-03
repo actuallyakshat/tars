@@ -380,7 +380,7 @@ func noteCmd(a *app) *cobra.Command {
 		Long: `Append an entry to a task's log. Agents use this to record decisions,
 progress, test results and where they stopped. Text "-" reads stdin.`,
 		Example: `  tars note 12 "Root cause: N+1 query in exporter"
-  tars note 12 --by agent --kind park - < handoff.md`,
+  tars note 12 --by agent - < handoff.md`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
@@ -409,7 +409,7 @@ progress, test results and where they stopped. Text "-" reads stdin.`,
 		},
 	}
 	byFlag(cmd, &by)
-	cmd.Flags().StringVarP(&kind, "kind", "k", "note", "entry kind: note, park, sweep, test, triage")
+	cmd.Flags().StringVarP(&kind, "kind", "k", "note", "entry kind: note, test, triage, …")
 	return cmd
 }
 

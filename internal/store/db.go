@@ -35,7 +35,7 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	// WAL + busy_timeout let parallel sweep agents write without "database is locked".
+	// WAL + busy_timeout let parallel agents write without "database is locked".
 	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -145,6 +145,36 @@ var migrations = []migration{
 	{
 		sql:     `ALTER TABLE tasks ADD COLUMN pr TEXT NOT NULL DEFAULT '';`,
 		applied: func(tx *sql.Tx) (bool, error) { return hasColumn(tx, "tasks", "pr") },
+	},
+	// Captures follow every Claude session in a git repo, from its first prompt
+	// until it's linked to a task, filed by the user, or dropped as no work.
+	{sql: `CREATE TABLE IF NOT EXISTS captures (
+		session_id  TEXT PRIMARY KEY,
+		state       TEXT NOT NULL DEFAULT 'open',
+		task_id     INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+		repo        TEXT NOT NULL DEFAULT '',
+		root        TEXT NOT NULL DEFAULT '',
+		worktree    TEXT NOT NULL DEFAULT '',
+		branch      TEXT NOT NULL DEFAULT '',
+		head        TEXT NOT NULL DEFAULT '',
+		tree        TEXT NOT NULL DEFAULT '',
+		prompt      TEXT NOT NULL DEFAULT '',
+		transcript  TEXT NOT NULL DEFAULT '',
+		edits       INTEGER NOT NULL DEFAULT 0,
+		commits     INTEGER NOT NULL DEFAULT 0,
+		files       TEXT NOT NULL DEFAULT '',
+		started_at  TEXT NOT NULL,
+		ended_at    TEXT NOT NULL DEFAULT ''
+	);
+	CREATE INDEX IF NOT EXISTS captures_state ON captures(state);
+	CREATE TABLE IF NOT EXISTS settings (
+		key   TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);`},
+	// Repos can opt out of capture.
+	{
+		sql:     `ALTER TABLE repos ADD COLUMN capture INTEGER NOT NULL DEFAULT 1;`,
+		applied: func(tx *sql.Tx) (bool, error) { return hasColumn(tx, "repos", "capture") },
 	},
 }
 

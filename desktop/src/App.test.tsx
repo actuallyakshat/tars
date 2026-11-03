@@ -912,3 +912,125 @@ describe("editing repos and preferences", () => {
     expect(await page.findByRole("article", { name: "Code style" })).toHaveTextContent("Small diffs.");
   });
 });
+
+describe("unfiled sessions", () => {
+  const openUnfiled = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(sidebar().getByRole("button", { name: /^Unfiled/ }));
+    return within(screen.getByRole("main", { name: "Unfiled" }));
+  };
+
+  it("counts them in the sidebar and shows what each session did", async () => {
+    fakeBackend();
+    const user = await boot();
+    await waitFor(() => expect(screen.getByTestId("count-unfiled")).toHaveTextContent("1"));
+    const page = await openUnfiled(user);
+    const card = within(page.getByRole("listitem", { name: "Stream CSV exports" }));
+    expect(card.getByText("billing-svc")).toBeInTheDocument();
+    expect(card.getByText("speed-up-exports")).toBeInTheDocument();
+    expect(card.getByText(/Exports time out on big accounts/)).toBeInTheDocument();
+    expect(card.getByText("6 edits")).toBeInTheDocument();
+    expect(card.getByText("1 commit")).toBeInTheDocument();
+    expect(card.getByText("export/csv.go, export/csv_test.go")).toBeInTheDocument();
+  });
+
+  it("files a session into a task picked from the list, same repo first", async () => {
+    const b = fakeBackend();
+    const user = await boot();
+    const page = await openUnfiled(user);
+    await user.click(page.getByRole("button", { name: "File into a task…" }));
+    const dialog = within(screen.getByRole("dialog", { name: /File “Stream CSV exports”/ }));
+    // Task 1 is the only open billing-svc task, so it's offered first.
+    expect(dialog.getAllByRole("option")[0]).toHaveTextContent("Add retry to webhook sender");
+    await user.type(dialog.getByRole("combobox", { name: "Search tasks" }), "readme");
+    await user.keyboard("{Enter}");
+    expect(b.callsTo("file_session")).toEqual([{ session: "aaaa1111-2222", into: 3, title: "" }]);
+    expect(await screen.findByRole("status")).toHaveTextContent("into #3 Tidy README");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(await page.findByText("Nothing to file")).toBeInTheDocument();
+    expect(screen.getByTestId("count-unfiled")).toHaveTextContent("0");
+  });
+
+  it("makes a session a new task with an editable title, or dismisses it", async () => {
+    const b = fakeBackend();
+    b.unfiled.push({ ...b.unfiled[0], session_id: "bbbb", name: "Poke around" });
+    const user = await boot();
+    const page = await openUnfiled(user);
+    const first = within(page.getByRole("listitem", { name: "Stream CSV exports" }));
+    await user.click(first.getByRole("button", { name: "New task" }));
+    const title = first.getByRole("textbox", { name: "New task title" });
+    expect(title).toHaveValue("Stream CSV exports");
+    await user.clear(title);
+    await user.type(title, "Stream exports{Enter}");
+    expect(b.callsTo("file_session")).toEqual([{ session: "aaaa1111-2222", into: null, title: "Stream exports" }]);
+    expect(b.tasks.at(-1)?.title).toBe("Stream exports");
+
+    await user.click(within(await page.findByRole("listitem", { name: "Poke around" })).getByRole("button", { name: "Dismiss" }));
+    expect(b.callsTo("dismiss_session")).toEqual([{ session: "bbbb" }]);
+    expect(await page.findByText("Nothing to file")).toBeInTheDocument();
+  });
+
+  it("shows none, without an error, when the CLI predates capture", async () => {
+    const b = fakeBackend();
+    b.fail.list_unfiled = { kind: "too_old", message: "unknown command" };
+    await boot();
+    expect(screen.getByTestId("count-unfiled")).toHaveTextContent("0");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("merging tasks", () => {
+  it("merges from the right-click menu into a picked task", async () => {
+    const b = fakeBackend(openTasks());
+    const user = await boot();
+    await user.keyboard("3");
+    await user.pointer({ keys: "[MouseRight]", target: screen.getByTestId("row-3") });
+    await user.click(screen.getByRole("menuitem", { name: "Merge into…" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Merge #3 into…" }));
+    expect(dialog.queryByText("Tidy README")).toBeNull();
+    await user.click(dialog.getByRole("option", { name: /Add retry to webhook sender/ }));
+    expect(b.callsTo("merge_tasks")).toEqual([{ from: 3, into: 1 }]);
+    await waitFor(() => expect(screen.queryByTestId("row-3")).toBeNull());
+    expect(screen.getByRole("status")).toHaveTextContent("Merged #3 into #1");
+  });
+
+  it("Esc closes the picker without merging", async () => {
+    const b = fakeBackend(openTasks());
+    const user = await boot();
+    await user.keyboard("3");
+    await user.pointer({ keys: "[MouseRight]", target: screen.getByTestId("row-3") });
+    await user.click(screen.getByRole("menuitem", { name: "Merge into…" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(b.callsTo("merge_tasks")).toEqual([]);
+    expect(screen.getByTestId("row-3")).toBeInTheDocument();
+  });
+});
+
+describe("capture switches", () => {
+  it("turns capture off everywhere from Settings, and for one repo from Repos", async () => {
+    const b = fakeBackend();
+    const user = await boot();
+    await user.click(sidebar().getByRole("button", { name: "Settings" }));
+    const all = await screen.findByRole("switch", { name: "Capture Claude sessions" });
+    await waitFor(() => expect(all).toBeEnabled());
+    expect(all).toHaveAttribute("aria-checked", "true");
+    await user.click(all);
+    expect(b.callsTo("capture_settings").at(-1)).toEqual({ on: false, repo: null });
+    await waitFor(() => expect(all).toHaveAttribute("aria-checked", "false"));
+
+    await user.click(sidebar().getByRole("button", { name: "Repos" }));
+    const repo = await screen.findByRole("switch", { name: "Capture Claude sessions here" });
+    await waitFor(() => expect(repo).toHaveAttribute("aria-checked", "true"));
+    await user.click(repo);
+    expect(b.callsTo("capture_settings").at(-1)).toEqual({ on: false, repo: "billing-svc" });
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Capture Claude sessions here" })).toHaveAttribute("aria-checked", "false"));
+  });
+
+  it("warns on the Unfiled page when capture is off", async () => {
+    const b = fakeBackend();
+    b.capture.on = false;
+    const user = await boot();
+    await user.click(sidebar().getByRole("button", { name: /^Unfiled/ }));
+    expect(await screen.findByText(/Capture is off/)).toBeInTheDocument();
+  });
+});

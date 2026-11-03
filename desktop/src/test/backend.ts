@@ -2,7 +2,7 @@
 // something that behaves like the CLI.
 import { invoke } from "@tauri-apps/api/core";
 import { vi } from "vitest";
-import type { CliError, Repo, Section, Task } from "../api";
+import type { Capture, CliError, Repo, Section, Task } from "../api";
 
 const NOW = new Date();
 const iso = (minutesAgo: number) => new Date(NOW.getTime() - minutesAgo * 60_000).toISOString();
@@ -101,7 +101,29 @@ export function openTasks(): Task[] {
   return sampleTasks().map((t) => (t.status === "done" ? t : { ...t, status: "in-progress" }));
 }
 
+export function sampleUnfiled(): Capture[] {
+  return [
+    {
+      session_id: "aaaa1111-2222",
+      state: "unfiled",
+      repo: "billing-svc",
+      root: "/Users/me/code/billing-svc",
+      worktree: "/Users/me/code/billing-svc",
+      branch: "speed-up-exports",
+      prompt: "Exports time out on big accounts\nstream rows instead",
+      edits: 6,
+      commits: 1,
+      files: ["export/csv.go", "export/csv_test.go"],
+      started_at: iso(90),
+      ended_at: iso(20),
+      name: "Stream CSV exports",
+    },
+  ];
+}
+
 export interface Backend {
+  unfiled: Capture[];
+  capture: { on: boolean; off_repos: string[] };
   tasks: Task[];
   repos: Repo[];
   sections: Record<string, Section[]>;
@@ -115,6 +137,8 @@ export interface Backend {
 export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
   const b: Backend = {
     tasks: structuredClone(initial),
+    unfiled: sampleUnfiled(),
+    capture: { on: true, off_repos: [] },
     repos: [{ name: "billing-svc", path: "/Users/me/code/billing-svc", updated_at: NOW.toISOString() }],
     folder: "/Users/me/code/promos-ui",
     sections: {
@@ -243,6 +267,49 @@ export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
       case "remove_repo":
         b.repos = b.repos.filter((x) => x.name !== args!.name);
         return { deleted: args!.name };
+      case "list_unfiled":
+        return structuredClone(b.unfiled);
+      case "file_session": {
+        const c = b.unfiled.find((x) => x.session_id === args!.session);
+        if (!c) throw { kind: "failed", message: `session ${args!.session}: not found` };
+        let id = args!.into as number | null;
+        if (id === null) {
+          id = Math.max(0, ...b.tasks.map((x) => x.id)) + 1;
+          b.tasks.push({
+            id,
+            title: (args!.title as string) || c.name || "",
+            repo: c.repo,
+            status: "inbox",
+            priority: 2,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        } else find(id);
+        b.unfiled = b.unfiled.filter((x) => x !== c);
+        return { task_id: id, session_id: c.session_id };
+      }
+      case "dismiss_session":
+        b.unfiled = b.unfiled.filter((x) => x.session_id !== args!.session);
+        return { dismissed: [args!.session] };
+      case "merge_tasks": {
+        const from = find(args!.from);
+        const into = find(args!.into);
+        into.sessions = [...(into.sessions ?? []), ...(from.sessions ?? [])];
+        b.tasks = b.tasks.filter((t) => t !== from);
+        return { from: from.id, into: into.id };
+      }
+      case "capture_settings": {
+        const on = args!.on as boolean | null;
+        const repo = args!.repo as string | null;
+        if (on !== null) {
+          if (repo) {
+            const r = b.repos.find((x) => x.name === repo)!;
+            r.capture_off = !on;
+            b.capture.off_repos = b.repos.filter((x) => x.capture_off).map((x) => x.name);
+          } else b.capture.on = on;
+        }
+        return structuredClone(b.capture);
+      }
       case "choose_folder":
         return b.folder;
       case "set_zoom":

@@ -94,8 +94,9 @@ Run with no arguments to open the interactive task list.`,
 		addCmd(a), lsCmd(a), showCmd(a), editCmd(a), mvCmd(a), doneCmd(a),
 		noteCmd(a), blockCmd(a), rmCmd(a),
 		reportCmd(a), answerCmd(a), sessionsCmd(a), seenCmd(a),
-		briefCmd(a), contextCmd(a),
+		contextCmd(a),
 		repoCmd(a), profileCmd(a),
+		captureCmd(a), unfiledCmd(a), fileCmd(a), dismissCmd(a), linkCmd(a), mergeCmd(a), hookCmd(a),
 	)
 	return root
 }

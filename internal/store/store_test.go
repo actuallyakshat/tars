@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 )
 
 func openTemp(t *testing.T) *Store {
@@ -298,56 +297,7 @@ func TestProfile(t *testing.T) {
 	}
 }
 
-func TestBriefBuckets(t *testing.T) {
-	s := openTemp(t)
-	today := time.Now().Format("2006-01-02")
-	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
-
-	review := mustCreate(t, s, &Task{Title: "review", Status: StatusInReview})
-	overdue := mustCreate(t, s, &Task{Title: "overdue", Status: StatusReady, Due: yesterday})
-	dueToday := mustCreate(t, s, &Task{Title: "today", Due: today})
-	follow := mustCreate(t, s, &Task{Title: "follow", Status: StatusBlocked, FollowUp: today})
-	notYet := mustCreate(t, s, &Task{Title: "later follow", Status: StatusBlocked, FollowUp: tomorrow})
-	stale := mustCreate(t, s, &Task{Title: "stale", Status: StatusInProgress})
-	done := mustCreate(t, s, &Task{Title: "done"})
-	done.Status = StatusDone
-	s.SaveTask(done)
-	// Backdate the stale task past the threshold.
-	old := time.Now().Add(-StaleAfter - time.Hour).UTC().Format(time.RFC3339)
-	if _, err := s.db.Exec(`UPDATE tasks SET updated_at = ? WHERE id = ?`, old, stale.ID); err != nil {
-		t.Fatal(err)
-	}
-
-	b, err := s.Brief()
-	if err != nil {
-		t.Fatal(err)
-	}
-	has := func(name string, list []*Task, id int64) {
-		t.Helper()
-		for _, x := range list {
-			if x.ID == id {
-				return
-			}
-		}
-		t.Errorf("%s missing #%d", name, id)
-	}
-	has("in_review", b.InReview, review.ID)
-	has("overdue", b.Overdue, overdue.ID)
-	has("ready", b.Ready, overdue.ID)
-	has("due_today", b.DueToday, dueToday.ID)
-	has("inbox", b.Inbox, dueToday.ID)
-	has("follow_ups", b.FollowUps, follow.ID)
-	has("stale", b.Stale, stale.ID)
-	has("done_recently", b.DoneRecently, done.ID)
-	for _, x := range b.FollowUps {
-		if x.ID == notYet.ID {
-			t.Error("future follow-up listed as due")
-		}
-	}
-}
-
-// Parallel sweep agents write concurrently; WAL + busy_timeout must absorb it.
+// Parallel agents write concurrently; WAL + busy_timeout must absorb it.
 func TestConcurrentWriters(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tars.db")
 	s0, err := Open(path)
@@ -490,9 +440,6 @@ func TestReportsNeedsYouAndAnswers(t *testing.T) {
 	}
 	if ts, _ := s.ListTasks(Filter{NeedsYou: true}); len(ts) != 1 || ts[0].ID != task.ID {
 		t.Fatalf("needs-you filter: %+v", ts)
-	}
-	if b, _ := s.Brief(); len(b.NeedsYou) != 1 {
-		t.Fatalf("brief needs-you: %+v", b.NeedsYou)
 	}
 
 	if err := s.Answer(other.ID, "x", "user"); !errors.Is(err, ErrNothingToAnswer) {

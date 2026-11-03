@@ -174,47 +174,6 @@ func Task(t *store.Task, width int) string {
 	return cardSt.Render(strings.TrimRight(b.String(), "\n")) + "\n"
 }
 
-// Brief renders the morning summary.
-func Brief(br *store.Brief, width int) string {
-	var b strings.Builder
-	b.WriteString(Accent.Render("TARS") + Muted.Render(" · "+br.Date) + "\n")
-
-	all := [][]*store.Task{br.NeedsYou, br.InReview, br.InProgress, br.Overdue, br.DueToday, br.FollowUps, br.Ready, br.Inbox, br.DoneRecently}
-	var flat []*store.Task
-	for _, g := range all {
-		flat = append(flat, g...)
-	}
-	iw := idWidth(flat)
-
-	section := func(title string, tasks []*store.Task, hint string) {
-		if len(tasks) == 0 {
-			return
-		}
-		b.WriteString("\n " + Bold.Render(title) + Muted.Render(fmt.Sprintf("  %d", len(tasks))))
-		if hint != "" {
-			b.WriteString(Muted.Render("  — " + hint))
-		}
-		b.WriteString("\n")
-		for _, t := range tasks {
-			b.WriteString(Row(t, width, iw) + "\n")
-		}
-	}
-	section("Needs your answer", br.NeedsYou, "questions an agent left you; answer with tars answer")
-	section("Waiting for your review", br.InReview, "agent work to check")
-	section("Overdue", br.Overdue, "")
-	section("Due today", br.DueToday, "")
-	section("Follow-ups due", br.FollowUps, "nudge whoever you're waiting on")
-	section("Stale", br.Stale, "in progress, untouched for 3+ days")
-	section("In progress", br.InProgress, "")
-	section("Ready for a sweep", br.Ready, "")
-	section("Inbox", br.Inbox, "needs triage")
-	section("Done in the last 24h", br.DoneRecently, "")
-	if len(flat) == 0 {
-		b.WriteString("\n" + Muted.Render("  All clear. Nothing on your plate.") + "\n")
-	}
-	return b.String()
-}
-
 func sections(secs []store.Section, width int) string {
 	var b strings.Builder
 	for _, s := range secs {

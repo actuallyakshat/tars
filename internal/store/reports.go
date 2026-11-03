@@ -150,16 +150,27 @@ func (s *Store) LinkSession(taskID int64, sess Session) error {
 	if sess.ID == "" {
 		return nil
 	}
+	if err := s.RecordSession(sess); err != nil {
+		return err
+	}
+	if err := s.linkCapture(taskID, sess.ID); err != nil {
+		return err
+	}
 	t := now()
-	if _, err := s.db.Exec(`INSERT INTO sessions (id, name, launch_dir, first_seen, last_seen) VALUES (?, ?, ?, ?, ?)
+	_, err := s.db.Exec(`INSERT INTO task_sessions (task_id, session_id, first_at, last_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(task_id, session_id) DO UPDATE SET last_at = excluded.last_at`, taskID, sess.ID, t, t)
+	return err
+}
+
+// RecordSession creates or refreshes a session without tying it to a task.
+// Empty name or launch dir keep stored values.
+func (s *Store) RecordSession(sess Session) error {
+	t := now()
+	_, err := s.db.Exec(`INSERT INTO sessions (id, name, launch_dir, first_seen, last_seen) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = CASE WHEN excluded.name != '' THEN excluded.name ELSE sessions.name END,
 			launch_dir = CASE WHEN excluded.launch_dir != '' THEN excluded.launch_dir ELSE sessions.launch_dir END,
-			last_seen = excluded.last_seen`, sess.ID, sess.Name, sess.LaunchDir, t, t); err != nil {
-		return err
-	}
-	_, err := s.db.Exec(`INSERT INTO task_sessions (task_id, session_id, first_at, last_at) VALUES (?, ?, ?, ?)
-		ON CONFLICT(task_id, session_id) DO UPDATE SET last_at = excluded.last_at`, taskID, sess.ID, t, t)
+			last_seen = excluded.last_seen`, sess.ID, sess.Name, sess.LaunchDir, t, t)
 	return err
 }
 

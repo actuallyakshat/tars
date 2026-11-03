@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Repo, RepoDetail, Section } from "../api";
-import { Page } from "./Pages";
+import { Page, Switch } from "./Pages";
 
 // What agents know about each repo, and about you everywhere. Agents read the
 // repo's own CLAUDE.md first; these fill in what it doesn't say.
@@ -17,6 +17,7 @@ export interface RepoActions {
   onSetSection: (repo: string | null, section: string, text: string) => Promise<boolean>;
   onChooseFolder: () => Promise<string | null>;
   onReveal: (path: string) => void;
+  onSetCapture: (repo: string, on: boolean) => Promise<boolean>;
 }
 
 // Friendly names for the sections the CLI suggests. Anything else shows as written.
@@ -168,6 +169,7 @@ function RepoView({
   onSetSection,
   onChooseFolder,
   onReveal,
+  onSetCapture,
   openTasks,
   onRenamed,
 }: RepoActions & { name: string; onRenamed: (name: string) => void }) {
@@ -236,6 +238,14 @@ function RepoView({
             </span>
           )}
         </div>
+        <Switch
+          label="Capture Claude sessions here"
+          help="Sessions in this repo are linked to their task, or wait in Unfiled."
+          on={data ? !data.capture_off : null}
+          onChange={async (on) => {
+            if (await onSetCapture(name, on)) setVersion((v) => v + 1);
+          }}
+        />
       </header>
       <Sections
         loading={loading}
