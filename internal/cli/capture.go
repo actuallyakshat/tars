@@ -72,15 +72,6 @@ func treeState(dir string) (head, tree string) {
 	return head, hex.EncodeToString(sum[:8])
 }
 
-// trunk branches are shared by unrelated work, so they never identify a task.
-func trunk(branch string) bool {
-	switch branch {
-	case "", "HEAD", "main", "master", "develop", "dev", "trunk":
-		return true
-	}
-	return false
-}
-
 // repoFor names the repo a checkout belongs to: the tars repo profile whose
 // path covers it, otherwise the main checkout's folder name.
 func (a *app) repoFor(g gitState) (name string, off bool) {
@@ -138,7 +129,7 @@ func (a *app) findTask(g gitState, repo, prompt string) (match, error) {
 		}
 		return match{Candidates: hits}, true
 	}
-	if !trunk(g.Branch) {
+	if !store.TrunkBranch(g.Branch) {
 		if m, ok := certain("branch "+g.Branch, func(t *store.Task) bool { return t.Branch == g.Branch && sameRepo(t) }); ok {
 			return m, nil
 		}
@@ -330,31 +321,10 @@ If you can't ask (a non-interactive run), skip this.`)
 	return b.String(), nil
 }
 
-// fileSession ties a captured session to a task and records the branch and
-// worktree on the task when it has none, so the session's other threads
-// match it without asking.
+// fileSession ties a captured session to a task; see store.FileCapture.
 func (a *app) fileSession(c *store.Capture, t *store.Task) error {
 	s := claude.Inspect(claude.ConfigDir(), c.SessionID)
-	if s.LaunchDir == "" {
-		s.LaunchDir = c.Worktree
-	}
-	if err := a.st.LinkSession(t.ID, store.Session{ID: c.SessionID, Name: s.Name, LaunchDir: s.LaunchDir}); err != nil {
-		return err
-	}
-	changed := false
-	if t.Branch == "" && !trunk(c.Branch) {
-		t.Branch, changed = c.Branch, true
-	}
-	if t.Worktree == "" && c.Worktree != "" && c.Worktree != c.Root {
-		t.Worktree, changed = c.Worktree, true
-	}
-	if t.Repo == "" && c.Repo != "" {
-		t.Repo, changed = c.Repo, true
-	}
-	if changed {
-		return a.st.SaveTask(t)
-	}
-	return nil
+	return a.st.FileCapture(c, t, s.Name, s.LaunchDir)
 }
 
 // settle records what a session changed: an unlinked session that did work
@@ -422,18 +392,6 @@ func firstLines(s string, max int) string {
 		s = string(r[:max]) + "…"
 	}
 	return s
-}
-
-// titleFor suggests a task title for an unfiled session.
-func titleFor(c *store.Capture) string {
-	if c.Name != "" {
-		return c.Name
-	}
-	line, _, _ := strings.Cut(c.Prompt, "\n")
-	if line = firstLines(line, 80); line != "" {
-		return line
-	}
-	return "Work in " + c.Repo
 }
 
 func linkCmd(a *app) *cobra.Command {
@@ -504,7 +462,7 @@ task. File each into a task (tars file <session> <id>), make it a new task
 				}
 				var b strings.Builder
 				for _, c := range cs {
-					fmt.Fprintf(&b, "%s  %s\n", ui.Accent.Render(shortID(c.SessionID)), ui.Bold.Render(titleFor(c)))
+					fmt.Fprintf(&b, "%s  %s\n", ui.Accent.Render(shortID(c.SessionID)), ui.Bold.Render(c.Title()))
 					meta := []string{c.Repo}
 					if c.Branch != "" {
 						meta = append(meta, c.Branch)
@@ -551,7 +509,7 @@ func fileCmd(a *app) *cobra.Command {
 			case newTask:
 				t = &store.Task{Title: title, Repo: c.Repo, Status: status, Priority: 2}
 				if t.Title == "" {
-					t.Title = titleFor(c)
+					t.Title = c.Title()
 				}
 				if c.Prompt != "" {
 					t.Body = c.Prompt
@@ -573,7 +531,7 @@ func fileCmd(a *app) *cobra.Command {
 			if err := a.fileSession(c, t); err != nil {
 				return err
 			}
-			if err := a.st.AddLog(t.ID, "user", "note", "Filed session "+shortID(c.SessionID)+": "+titleFor(c)); err != nil {
+			if err := a.st.AddLog(t.ID, "user", "note", "Filed session "+shortID(c.SessionID)+": "+c.Title()); err != nil {
 				return err
 			}
 			return a.emit(map[string]any{"task_id": t.ID, "session_id": c.SessionID}, func() string {

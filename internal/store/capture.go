@@ -58,6 +58,59 @@ func scanCapture(r scanner) (*Capture, error) {
 	return &c, nil
 }
 
+// Title is what to call a captured session: its title, else the first line
+// of its first prompt.
+func (c *Capture) Title() string {
+	if c.Name != "" {
+		return c.Name
+	}
+	line, _, _ := strings.Cut(strings.TrimSpace(c.Prompt), "\n")
+	if r := []rune(strings.TrimSpace(line)); len(r) > 80 {
+		line = string(r[:80]) + "…"
+	}
+	if line = strings.TrimSpace(line); line != "" {
+		return line
+	}
+	return "Work in " + c.Repo
+}
+
+// FileCapture ties a captured session to task t, and records the session's
+// branch, worktree and repo on the task where it has none, so the feature's
+// other threads match it without asking. name and launchDir describe the
+// session when known.
+func (s *Store) FileCapture(c *Capture, t *Task, name, launchDir string) error {
+	if launchDir == "" {
+		launchDir = c.Worktree
+	}
+	if err := s.LinkSession(t.ID, Session{ID: c.SessionID, Name: name, LaunchDir: launchDir}); err != nil {
+		return err
+	}
+	changed := false
+	if t.Branch == "" && !TrunkBranch(c.Branch) {
+		t.Branch, changed = c.Branch, true
+	}
+	if t.Worktree == "" && c.Worktree != "" && c.Worktree != c.Root {
+		t.Worktree, changed = c.Worktree, true
+	}
+	if t.Repo == "" && c.Repo != "" {
+		t.Repo, changed = c.Repo, true
+	}
+	if changed {
+		return s.SaveTask(t)
+	}
+	return nil
+}
+
+// TrunkBranch reports branches shared by unrelated work, which never identify
+// a task.
+func TrunkBranch(branch string) bool {
+	switch branch {
+	case "", "HEAD", "main", "master", "develop", "dev", "trunk":
+		return true
+	}
+	return false
+}
+
 // StartCapture records a session's first prompt. It reports false when the
 // session was already captured, so callers only do their work once.
 func (s *Store) StartCapture(c *Capture) (bool, error) {

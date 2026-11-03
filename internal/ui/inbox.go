@@ -154,6 +154,8 @@ const (
 	modeStatus
 	modePriority
 	modeAnswer
+	modeFileInto // file the selected unfiled session into a task
+	modeFileNew  // make the selected unfiled session a new task
 )
 
 type row struct {
@@ -202,6 +204,11 @@ type inbox struct {
 	flashErr bool
 	undo     *undoEntry
 
+	// The Unfiled view: captured sessions waiting to be filed.
+	unfiled bool
+	caps    []*store.Capture
+	capCur  int
+
 	copy func(string) error // clipboard writer; swapped out in tests
 }
 
@@ -249,6 +256,10 @@ func (m *inbox) reload() error {
 		return err
 	}
 	m.all = all
+	if m.caps, err = m.st.Captures(store.CaptureUnfiled); err != nil {
+		return err
+	}
+	m.capCur = min(m.capCur, max(len(m.caps)-1, 0))
 	m.counts = make([]int, len(views))
 	m.unread = make([]int, len(views))
 	for _, t := range all {
@@ -424,13 +435,19 @@ func (m *inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		switch m.mode {
-		case modeSearch, modeAdd, modeNote, modeAnswer:
+		case modeSearch, modeAdd, modeNote, modeAnswer, modeFileInto, modeFileNew:
 			cmd = m.updateInput(msg)
 		case modeStatus, modePriority:
 			m.updatePicker(msg)
 		default:
 			if m.help {
 				m.help = false
+				break
+			}
+			if m.unfiled {
+				if q := m.updateUnfiled(msg); q != nil {
+					return m, q
+				}
 				break
 			}
 			if q := m.updateList(msg); q != nil {
@@ -519,11 +536,21 @@ func (m *inbox) updateList(msg tea.KeyMsg) tea.Cmd {
 			m.rebuild(m.selectedID())
 		}
 	case "tab":
-		m.setView(m.view + 1)
+		if m.view == len(views)-1 {
+			m.showUnfiled()
+		} else {
+			m.setView(m.view + 1)
+		}
 	case "shift+tab":
-		m.setView(m.view - 1)
+		if m.view == 0 {
+			m.showUnfiled()
+		} else {
+			m.setView(m.view - 1)
+		}
 	case "1", "2", "3", "4":
 		m.setView(int(key[0] - '1'))
+	case "5":
+		m.showUnfiled()
 	case "g":
 		m.group = (m.group + 1) % groupingCount
 		m.rebuild(m.selectedID())
@@ -599,6 +626,7 @@ func (m *inbox) startInput(md mode, value, placeholder string) tea.Cmd {
 
 func (m *inbox) endInput() {
 	m.mode = modeList
+	m.input.Width = max(m.width-30, 10)
 	m.input.Blur()
 	m.input.Reset()
 }
@@ -673,6 +701,10 @@ func (m *inbox) submitInput() {
 		}
 		m.afterChange(t.ID)
 		m.say("Answered #%d. The next agent on it will see your answer.", t.ID)
+	case modeFileInto, modeFileNew:
+		if m.fileCapture(val, m.mode == modeFileNew) {
+			m.endInput()
+		}
 	case modeNote:
 		t := m.selected()
 		m.endInput()
@@ -828,6 +860,8 @@ func (m *inbox) View() string {
 	switch {
 	case m.help:
 		body = helpView(m.width, bodyH)
+	case m.unfiled:
+		body = m.unfiledView(m.width, bodyH)
 	case m.split():
 		// Fix the list's width so the divider never shifts with short content.
 		list := lipgloss.NewStyle().Width(m.listWidth()).Render(m.listView(m.listWidth(), bodyH))
@@ -849,7 +883,7 @@ func (m *inbox) topBar() string {
 	for i, v := range views {
 		label := fmt.Sprintf("%s %d", v.name, m.counts[i])
 		st := tabSt
-		if i == m.view {
+		if i == m.view && !m.unfiled {
 			st = tabOnSt
 		}
 		left += st.Render(label)
@@ -861,6 +895,14 @@ func (m *inbox) topBar() string {
 			left += "  "
 		}
 		left += "   "
+	}
+	ust := tabSt
+	if m.unfiled {
+		ust = tabOnSt
+	}
+	left += ust.Render(fmt.Sprintf("Unfiled %d", len(m.caps)))
+	if len(m.caps) > 0 {
+		left += " " + unreadSt.Render("●")
 	}
 	right := "group: " + m.group.String()
 	if m.query != "" {
@@ -879,9 +921,11 @@ func (m *inbox) footer() string {
 	switch m.mode {
 	case modeSearch:
 		return " " + Accent.Render("/") + " " + m.input.View()
-	case modeAdd, modeNote, modeAnswer:
+	case modeAdd, modeNote, modeAnswer, modeFileInto, modeFileNew:
 		label := "New task"
 		switch {
+		case m.mode == modeFileInto:
+			label = "File into task #"
 		case m.mode == modeNote && t != nil:
 			label = fmt.Sprintf("Note on #%d", t.ID)
 		case m.mode == modeAnswer && t != nil:
@@ -913,6 +957,9 @@ func (m *inbox) footer() string {
 	}
 	if m.help {
 		return keyHints("any key", "close help")
+	}
+	if m.unfiled {
+		return keyHints("↑↓", "move", "f", "file into task", "n", "new task", "d", "dismiss", "o", "copy resume", "tab", "view", "?", "help")
 	}
 	if m.detail {
 		return keyHints("j/k", "next/prev", "↑↓", "scroll", "a", "answer", "o", "copy resume", "l", "activity", "n", "note", "x", "done", "esc", "close", "?", "help")
@@ -1215,18 +1262,19 @@ func helpView(width, height int) string {
 		}
 		return b.String()
 	}
-	nav := section{"Navigate", []string{"↑↓ j k", "move", "home end", "first / last", "tab ⇧tab", "next / previous view", "1–4", "jump to view", "enter", "open / close details", "esc ← h", "back, clear search"}}
+	nav := section{"Navigate", []string{"↑↓ j k", "move", "home end", "first / last", "tab ⇧tab", "next / previous view", "1–5", "jump to view (5: Unfiled)", "enter", "open / close details", "esc ← h", "back, clear search"}}
 	details := section{"Details", []string{"↑↓ pgup pgdn", "scroll", "j k", "next / previous task", "l", "expand / collapse activity"}}
 	act := section{"Selected task", []string{"a", "answer the agent's question", "o", "copy claude --resume command", "x", "done (again: reopen)", "s", "change status", "p", "change priority", "n", "add a note", "u", "undo last change"}}
+	unf := section{"Unfiled sessions", []string{"f", "file into a task by number", "n", "make it a new task", "d", "dismiss", "o", "copy claude --resume command"}}
 	list := section{"List", []string{"c", "new task (quick add)", "/", "search", "g", "group: priority · due · status · repo", "r", "refresh", "q", "quit"}}
 
 	var keys string
 	if width >= 100 {
 		trim := func(s string) string { return strings.TrimRight(s, "\n") }
 		left := lipgloss.NewStyle().Width(48).Render(trim(render(nav, details)))
-		keys = lipgloss.JoinHorizontal(lipgloss.Top, left, trim(render(act, list)))
+		keys = lipgloss.JoinHorizontal(lipgloss.Top, left, trim(render(act, list, unf)))
 	} else {
-		keys = render(nav, act, details, list)
+		keys = render(nav, act, details, list, unf)
 	}
 	quick := "  " + groupSt.Render("QUICK ADD") + "\n" +
 		"    " + textSt.Render("Fix export BILL-881 !high @billing #perf due:fri") + "\n" +

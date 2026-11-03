@@ -52,7 +52,7 @@ brew install --cask actuallyakshat/tap/tars-app
 
 ## The CLI
 
-Run `tars` with no arguments to open the task list. It's a compact, Gmail-style list: one line per task, grouped by priority, with views along the top (All · Needs you · Active · Done). Press `enter` to open a task. On wide terminals (120+ columns) the details open beside the list; on narrower ones they take the whole screen. The activity log starts collapsed.
+Run `tars` with no arguments to open the task list. It's a compact, Gmail-style list: one line per task, grouped by priority, with views along the top (All · Needs you · Active · Done · Unfiled). Press `enter` to open a task. On wide terminals (120+ columns) the details open beside the list; on narrower ones they take the whole screen. The activity log starts collapsed.
 
 A **●** marks tasks the agent has updated since you last opened them.
 
@@ -60,7 +60,7 @@ A **●** marks tasks the agent has updated since you last opened them.
 |---|---|
 | `↑↓` / `j k` | Move (in full-screen details, `j k` go to the next/previous task) |
 | `enter` / `esc` | Open / close details |
-| `tab` / `1`–`4` | Switch view |
+| `tab` / `1`–`5` | Switch view (`5` is Unfiled: `f` file into a task, `n` new task, `d` dismiss) |
 | `g` | Group by priority → due → status → repo → none |
 | `/` | Search (title, Jira, repo, tags) |
 | `x` | Done (press again to reopen) |
