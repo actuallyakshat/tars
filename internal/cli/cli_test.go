@@ -160,11 +160,21 @@ func TestEdit(t *testing.T) {
 		"--pr", " https://github.com/acme/billing/pull/412 ")
 	tk := e.task("1")
 	if tk.Title != "renamed" || strings.Join(tk.Tags, ",") != "b,c" || tk.Branch != "tars/1" ||
-		tk.Worktree != "/tmp/wt" || tk.Status != "in-progress" || tk.PR != "https://github.com/acme/billing/pull/412" {
+		tk.Worktree != "/tmp/wt" || tk.Status != "in-progress" || strings.Join(tk.PRs, ",") != "https://github.com/acme/billing/pull/412" {
 		t.Fatalf("edit: %+v", tk)
 	}
 	if len(tk.Log) != 1 || tk.Log[0].Kind != "status" || tk.Log[0].Text != "inbox → in-progress" {
 		t.Fatalf("status change not logged: %+v", tk.Log)
+	}
+
+	// --pr adds (deduped) and --unpr removes, so a task can hold several PRs.
+	e.ok("edit", "1", "--pr", "https://github.com/acme/web/pull/9", "--pr", "https://github.com/acme/billing/pull/412")
+	if tk := e.task("1"); strings.Join(tk.PRs, " ") != "https://github.com/acme/billing/pull/412 https://github.com/acme/web/pull/9" {
+		t.Fatalf("second pr not added: %q", tk.PRs)
+	}
+	e.ok("edit", "1", "--unpr", "https://github.com/acme/billing/pull/412")
+	if tk := e.task("1"); strings.Join(tk.PRs, " ") != "https://github.com/acme/web/pull/9" {
+		t.Fatalf("pr not removed: %q", tk.PRs)
 	}
 
 	e.ok("edit", "1", "-d", "none")

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -139,7 +140,9 @@ func (a *app) findTask(g gitState, repo, prompt string) (match, error) {
 			return match{Task: t, Via: store.ViaWorktree, Why: "its worktree " + g.Worktree}, nil
 		}
 	}
-	if t := only(func(t *store.Task) bool { return t.PR != "" && strings.Contains(prompt, t.PR) }); t != nil {
+	if t := only(func(t *store.Task) bool {
+		return slices.ContainsFunc(t.PRs, func(pr string) bool { return strings.Contains(prompt, pr) })
+	}); t != nil {
 		return match{Task: t, Via: store.ViaPR, Why: "its pull request"}, nil
 	}
 	for _, key := range append(jiraKey.FindAllString(strings.ToUpper(g.Branch), -1), jiraKey.FindAllString(prompt, -1)...) {

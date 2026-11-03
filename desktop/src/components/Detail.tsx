@@ -301,12 +301,16 @@ function Fields({ t, now, onJira, onOpenUrl, onCopy, onReveal }: { t: Task; now:
         {t.branch}
       </button>,
     ]);
-  if (t.pr)
+  if (t.prs?.length)
     rows.push([
-      "pr",
-      <button className="link pr-link" title={`Open ${t.pr}`} onClick={() => onOpenUrl(t.pr!)}>
-        <PrIcon /> {prLabel(t.pr)}
-      </button>,
+      t.prs.length > 1 ? "prs" : "pr",
+      <span className="pr-links">
+        {t.prs.map((pr) => (
+          <button key={pr} className="link pr-link" title={`Open ${pr}`} onClick={() => onOpenUrl(pr)}>
+            <PrIcon /> {prLabel(pr)}
+          </button>
+        ))}
+      </span>,
     ]);
   if (t.worktree)
     rows.push([

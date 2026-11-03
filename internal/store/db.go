@@ -176,7 +176,7 @@ var migrations = []migration{
 		last_at     TEXT NOT NULL,
 		PRIMARY KEY (task_id, session_id)
 	);`},
-	// The pull request holding the work, as a URL, set when an agent opens one.
+	// The pull requests holding the work, as comma-separated URLs, added as agents open them.
 	{
 		sql:     `ALTER TABLE tasks ADD COLUMN pr TEXT NOT NULL DEFAULT '';`,
 		applied: func(tx *sql.Tx) (bool, error) { return hasColumn(tx, "tasks", "pr") },

@@ -1477,7 +1477,8 @@ kbd {
   color: var(--muted);
 }
 
-.field input {
+.field input,
+.field textarea {
   padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -1487,6 +1488,7 @@ kbd {
 }
 
 .field input:focus,
+.field textarea:focus,
 .new-task .body-input:focus {
   border-color: var(--ink-2);
   outline: none;
@@ -2382,6 +2384,12 @@ button kbd,
 }
 
 /* ---------- pull requests ---------- */
+
+.pr-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
 
 .pr-chip {
   display: inline-flex;

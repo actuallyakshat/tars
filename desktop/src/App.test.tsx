@@ -840,11 +840,27 @@ describe("pull requests", () => {
     expect(within(screen.getByTestId("row-3")).queryByRole("button", { name: /PR/ })).toBeNull();
     await detail().findByText("Tidy README");
     await user.keyboard("e");
-    await user.type(screen.getByRole("textbox", { name: "Pull request" }), "https://github.com/acme/web/pull/9");
+    await user.type(screen.getByRole("textbox", { name: "Pull requests" }), "https://github.com/acme/web/pull/9");
     await user.keyboard("{Meta>}{Enter}{/Meta}");
-    expect(b.callsTo("edit_task")).toEqual([{ id: 3, edit: { pr: "https://github.com/acme/web/pull/9" } }]);
+    expect(b.callsTo("edit_task")).toEqual([{ id: 3, edit: { pr: ["https://github.com/acme/web/pull/9"] } }]);
     expect(await within(screen.getByTestId("row-3")).findByRole("button", { name: "PR #9" })).toBeInTheDocument();
     expect(await detail().findByRole("button", { name: /PR #9/ })).toBeInTheDocument();
+
+    // A second PR on the same task: both show, and dropping one sends --unpr.
+    await user.keyboard("e");
+    const field = screen.getByRole("textbox", { name: "Pull requests" });
+    await user.type(field, "{Enter}https://github.com/acme/web/pull/10");
+    await user.keyboard("{Meta>}{Enter}{/Meta}");
+    expect(b.callsTo("edit_task")[1]).toEqual({ id: 3, edit: { pr: ["https://github.com/acme/web/pull/10"] } });
+    expect(await within(screen.getByTestId("row-3")).findByRole("button", { name: "PR #10" })).toBeInTheDocument();
+    expect(within(screen.getByTestId("row-3")).getByRole("button", { name: "PR #9" })).toBeInTheDocument();
+
+    await user.keyboard("e");
+    const again = screen.getByRole("textbox", { name: "Pull requests" });
+    await user.clear(again);
+    await user.type(again, "https://github.com/acme/web/pull/10");
+    await user.keyboard("{Meta>}{Enter}{/Meta}");
+    expect(b.callsTo("edit_task")[2]).toEqual({ id: 3, edit: { unpr: ["https://github.com/acme/web/pull/9"] } });
   });
 
   it("has no PR field when creating a task", async () => {

@@ -109,7 +109,7 @@ tars repo set billing-svc -S tests -x "make test; integration: docker compose up
 tars repo set billing-svc -S dod -f ./docs/DOD.md
 tars repo mv billing-svc billing   # rename; its tasks move with it
 tars profile set style -x "Small PRs. No mocks for the DB layer."
-tars edit 12 --pr https://github.com/acme/billing/pull/412
+tars edit 12 --pr https://github.com/acme/billing/pull/412   # repeatable: a task can have several PRs
 tars context 12                # everything an agent should read before working on #12
 ```
 

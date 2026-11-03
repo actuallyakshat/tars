@@ -44,7 +44,7 @@ type Task struct {
 	Acceptance string        `json:"acceptance,omitempty"`
 	Branch     string        `json:"branch,omitempty"`
 	Worktree   string        `json:"worktree,omitempty"`
-	PR         string        `json:"pr,omitempty"`
+	PRs        []string      `json:"prs,omitempty"` // pull request URLs, oldest first
 	WaitingOn  string        `json:"waiting_on,omitempty"`
 	FollowUp   string        `json:"follow_up,omitempty"`
 	CreatedAt  string        `json:"created_at"`
@@ -82,14 +82,15 @@ type scanner interface{ Scan(...any) error }
 
 func scanTask(r scanner) (*Task, error) {
 	var t Task
-	var tags string
+	var tags, prs string
 	err := r.Scan(&t.ID, &t.Title, &t.Body, &t.Status, &t.Priority, &t.Jira, &t.Repo, &tags,
-		&t.Due, &t.Acceptance, &t.Branch, &t.Worktree, &t.PR, &t.WaitingOn, &t.FollowUp,
+		&t.Due, &t.Acceptance, &t.Branch, &t.Worktree, &prs, &t.WaitingOn, &t.FollowUp,
 		&t.CreatedAt, &t.UpdatedAt, &t.DoneAt, &t.Unread, &t.NeedsYou)
 	if err != nil {
 		return nil, err
 	}
 	t.Tags = splitTags(tags)
+	t.PRs = splitTags(prs)
 	return &t, nil
 }
 
@@ -115,7 +116,7 @@ func (s *Store) CreateTask(t *Task) error {
 		acceptance, branch, worktree, pr, waiting_on, follow_up, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.Title, t.Body, t.Status, t.Priority, t.Jira, t.Repo, strings.Join(t.Tags, ","), t.Due,
-		t.Acceptance, t.Branch, t.Worktree, t.PR, t.WaitingOn, t.FollowUp, t.CreatedAt, t.UpdatedAt)
+		t.Acceptance, t.Branch, t.Worktree, strings.Join(t.PRs, ","), t.WaitingOn, t.FollowUp, t.CreatedAt, t.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -156,7 +157,7 @@ func (s *Store) SaveTask(t *Task) error {
 		due=?, acceptance=?, branch=?, worktree=?, pr=?, waiting_on=?, follow_up=?, updated_at=?, done_at=?
 		WHERE id=?`,
 		t.Title, t.Body, t.Status, t.Priority, t.Jira, t.Repo, strings.Join(t.Tags, ","), t.Due,
-		t.Acceptance, t.Branch, t.Worktree, t.PR, t.WaitingOn, t.FollowUp, t.UpdatedAt, t.DoneAt, t.ID)
+		t.Acceptance, t.Branch, t.Worktree, strings.Join(t.PRs, ","), t.WaitingOn, t.FollowUp, t.UpdatedAt, t.DoneAt, t.ID)
 	return err
 }
 

@@ -77,7 +77,7 @@ export function sampleTasks(): Task[] {
     {
       id: 4,
       title: "Ship CSV export",
-      pr: "https://github.com/acme/billing/pull/412",
+      prs: ["https://github.com/acme/billing/pull/412"],
       status: "in-review",
       priority: 2,
       due: day(-2),
@@ -389,8 +389,8 @@ export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
       }
       case "edit_task": {
         const t = find(args!.id);
-        const e = args!.edit as Record<string, unknown> & { tag?: string[]; untag?: string[] };
-        for (const k of ["title", "body", "jira", "repo", "pr"] as const) {
+        const e = args!.edit as Record<string, unknown> & { tag?: string[]; untag?: string[]; pr?: string[]; unpr?: string[] };
+        for (const k of ["title", "body", "jira", "repo"] as const) {
           if (typeof e[k] === "string") (t as unknown as Record<string, unknown>)[k] = e[k] || undefined;
         }
         if (typeof e.due === "string") t.due = e.due === "none" ? undefined : e.due;
@@ -398,6 +398,9 @@ export function fakeBackend(initial: Task[] = sampleTasks()): Backend {
         const tags = (t.tags ?? []).filter((x) => !e.untag?.includes(x));
         for (const x of e.tag ?? []) if (!tags.includes(x)) tags.push(x);
         t.tags = tags.length ? tags : undefined;
+        const prs = (t.prs ?? []).filter((x) => !e.unpr?.includes(x));
+        for (const x of e.pr ?? []) if (!prs.includes(x)) prs.push(x);
+        t.prs = prs.length ? prs : undefined;
         return structuredClone(t);
       }
       case "delete_task":

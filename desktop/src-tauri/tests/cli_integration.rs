@@ -149,7 +149,7 @@ fn reads_and_writes_through_the_real_cli() {
                 jira: Some("".into()),
                 due: Some("none".into()),
                 priority: Some("low".into()),
-                pr: Some("https://github.com/acme/billing/pull/412".into()),
+                pr: vec!["https://github.com/acme/billing/pull/412".into()],
                 tag: vec!["urgent".into()],
                 untag: vec!["perf".into()],
                 ..Default::default()
@@ -160,7 +160,7 @@ fn reads_and_writes_through_the_real_cli() {
     assert!(edited.get("jira").is_none());
     assert!(edited.get("due").is_none());
     assert_eq!(edited["priority"], 3);
-    assert_eq!(edited["pr"], "https://github.com/acme/billing/pull/412");
+    assert_eq!(edited["prs"], serde_json::json!(["https://github.com/acme/billing/pull/412"]));
     assert_eq!(edited["tags"], serde_json::json!(["backend", "urgent"]));
     assert_eq!(t.edit(1, &TaskEdit::default()).unwrap()["title"], "Retry webhooks");
 

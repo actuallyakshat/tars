@@ -133,19 +133,20 @@ function Row({ t, now, selected, ref, onSelect, onOpen, onMenu, onOpenUrl, isNew
         <span className="title-text">{t.title}</span>
         {isNew && <span className="new-badge" title="A Claude session was just captured into this task">New</span>}
         {t.status === "blocked" && t.waiting_on && <span className="waiting">waiting on {t.waiting_on}</span>}
-        {t.pr && (
+        {t.prs?.map((pr) => (
           <button
+            key={pr}
             className="pr-chip"
-            title={`Open ${t.pr}`}
+            title={`Open ${pr}`}
             onClick={(e) => {
               e.stopPropagation();
-              onOpenUrl(t.pr!);
+              onOpenUrl(pr);
             }}
           >
             <PrIcon />
-            {prLabel(t.pr)}
+            {prLabel(pr)}
           </button>
-        )}
+        ))}
       </span>
       <span className="c-jira">{t.jira}</span>
       <span className="c-repo">{t.repo}</span>

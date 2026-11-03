@@ -140,9 +140,10 @@ pub struct TaskEdit {
     pub jira: Option<String>,
     pub repo: Option<String>,
     pub due: Option<String>,
-    pub pr: Option<String>,
     pub tag: Vec<String>,
     pub untag: Vec<String>,
+    pub pr: Vec<String>,
+    pub unpr: Vec<String>,
 }
 
 /// Arguments after the global flags for each command the app uses. Free text
@@ -376,13 +377,12 @@ pub mod args {
             ("jira", &e.jira),
             ("repo", &e.repo),
             ("due", &e.due),
-            ("pr", &e.pr),
         ] {
             if let Some(v) = v {
                 a.push(format!("--{flag}={v}"));
             }
         }
-        for (flag, tags) in [("tag", &e.tag), ("untag", &e.untag)] {
+        for (flag, tags) in [("tag", &e.tag), ("untag", &e.untag), ("pr", &e.pr), ("unpr", &e.unpr)] {
             for t in tags.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
                 a.push(format!("--{flag}={t}"));
             }
@@ -992,11 +992,14 @@ mod tests {
             due: Some("none".into()),
             tag: vec!["perf".into(), " ".into()],
             untag: vec!["later".into()],
+            pr: vec!["https://github.com/acme/web/pull/9".into()],
+            unpr: vec!["https://github.com/acme/web/pull/8".into()],
             ..Default::default()
         };
         assert_eq!(
             args::edit(7, &e),
-            ["edit", "7", "--title=-v flag", "--jira=", "--due=none", "--tag=perf", "--untag=later"]
+            ["edit", "7", "--title=-v flag", "--jira=", "--due=none", "--tag=perf", "--untag=later",
+             "--pr=https://github.com/acme/web/pull/9", "--unpr=https://github.com/acme/web/pull/8"]
         );
         assert_eq!(args::edit(7, &TaskEdit::default()), ["edit", "7"]);
     }

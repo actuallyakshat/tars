@@ -299,7 +299,9 @@ func contextMarkdown(c agentContext) string {
 		row("due", t.Due)
 		row("branch", t.Branch)
 		row("worktree", t.Worktree)
-		row("pr", t.PR)
+		for _, pr := range t.PRs {
+			row("pr", pr)
+		}
 		row("waiting on", t.WaitingOn)
 		row("follow up", t.FollowUp)
 		if t.Body != "" {

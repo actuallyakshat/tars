@@ -130,8 +130,8 @@ func Task(t *store.Task, width int) string {
 	if t.Worktree != "" {
 		b.WriteString(field("worktree", t.Worktree) + "\n")
 	}
-	if t.PR != "" {
-		b.WriteString(field("pr", t.PR) + "\n")
+	for _, pr := range t.PRs {
+		b.WriteString(field("pr", pr) + "\n")
 	}
 	if t.WaitingOn != "" {
 		b.WriteString(field("waiting on", t.WaitingOn) + "\n")

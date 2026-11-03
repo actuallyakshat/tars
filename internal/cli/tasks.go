@@ -43,8 +43,8 @@ func readText(cmd *cobra.Command, v string) (string, error) {
 }
 
 type taskFlags struct {
-	title, body, jira, repo, due, priority, status, accept, branch, worktree, pr string
-	tags, untag                                                                  []string
+	title, body, jira, repo, due, priority, status, accept, branch, worktree string
+	tags, untag, prs, unpr                                                    []string
 }
 
 func (f *taskFlags) register(cmd *cobra.Command, edit bool) {
@@ -52,6 +52,7 @@ func (f *taskFlags) register(cmd *cobra.Command, edit bool) {
 	if edit {
 		fl.StringVar(&f.title, "title", "", "new title")
 		fl.StringSliceVar(&f.untag, "untag", nil, "remove tag(s)")
+		fl.StringSliceVar(&f.unpr, "unpr", nil, "remove pull request URL(s)")
 	}
 	fl.StringVarP(&f.body, "body", "b", "", "description (\"-\" reads stdin)")
 	fl.StringVarP(&f.jira, "jira", "j", "", "Jira key, e.g. PROJ-123")
@@ -63,10 +64,10 @@ func (f *taskFlags) register(cmd *cobra.Command, edit bool) {
 	fl.StringVarP(&f.accept, "accept", "a", "", "acceptance criteria (\"-\" reads stdin)")
 	fl.StringVar(&f.branch, "branch", "", "git branch holding the work")
 	fl.StringVar(&f.worktree, "worktree", "", "git worktree path holding the work")
-	fl.StringVar(&f.pr, "pr", "", "pull request URL holding the work")
+	fl.StringSliceVar(&f.prs, "pr", nil, "add pull request URL(s) holding the work, repeatable")
 }
 
-var taskFlagNames = []string{"title", "untag", "body", "jira", "repo", "tag", "due", "priority", "status", "accept", "branch", "worktree", "pr"}
+var taskFlagNames = []string{"title", "untag", "body", "jira", "repo", "tag", "due", "priority", "status", "accept", "branch", "worktree", "pr", "unpr"}
 
 func (f *taskFlags) anyChanged(cmd *cobra.Command) bool {
 	return slices.ContainsFunc(taskFlagNames, cmd.Flags().Changed)
@@ -119,8 +120,14 @@ func (f *taskFlags) apply(cmd *cobra.Command, t *store.Task) error {
 	if ch("worktree") {
 		t.Worktree = f.worktree
 	}
-	if ch("pr") {
-		t.PR = strings.TrimSpace(f.pr)
+	for _, pr := range f.prs {
+		if pr = strings.TrimSpace(pr); pr != "" && !slices.Contains(t.PRs, pr) {
+			t.PRs = append(t.PRs, pr)
+		}
+	}
+	for _, pr := range f.unpr {
+		pr = strings.TrimSpace(pr)
+		t.PRs = slices.DeleteFunc(t.PRs, func(x string) bool { return x == pr })
 	}
 	for _, tag := range f.tags {
 		tag = strings.TrimPrefix(strings.TrimSpace(tag), "#")
@@ -258,7 +265,8 @@ func editCmd(a *app) *cobra.Command {
 		Short: "Change fields of a task",
 		Example: `  tars edit 12 -j BILL-900 --untag later -t urgent
   tars edit 12 --branch tars/12-csv-export --worktree ../billing-12
-  tars edit 12 --pr https://github.com/acme/billing/pull/412`,
+  tars edit 12 --pr https://github.com/acme/billing/pull/412   # adds; a task can hold several
+  tars edit 12 --unpr https://github.com/acme/billing/pull/412`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !f.anyChanged(cmd) {

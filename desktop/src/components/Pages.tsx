@@ -42,6 +42,8 @@ type Draft = Required<Omit<NewTask, "priority">> & { priority: string; pr: strin
 const EMPTY: Draft = { title: "", body: "", priority: "normal", due: "", jira: "", repo: "", tags: "", pr: "" };
 
 const tagList = (s: string) => [...new Set(s.split(",").map((t) => t.trim()).filter(Boolean))];
+/** PR URLs, one per line (commas work too). */
+const prList = (s: string) => [...new Set(s.split(/[\s,]+/).filter(Boolean))];
 
 function TaskForm({
   heading,
@@ -172,8 +174,14 @@ function TaskForm({
 
           {showPR && (
             <label className="field">
-              <span className="field-label">Pull request</span>
-              <input className="mono" value={t.pr} onChange={(e) => set("pr", e.target.value)} placeholder="https://github.com/acme/billing/pull/412" />
+              <span className="field-label">Pull requests</span>
+              <textarea
+                className="mono"
+                value={t.pr}
+                onChange={(e) => set("pr", e.target.value)}
+                placeholder="https://github.com/acme/billing/pull/412"
+                rows={Math.max(1, prList(t.pr).length)}
+              />
             </label>
           )}
         </div>
@@ -210,7 +218,7 @@ export function NewTaskPage({
 export function taskChanges(task: Task, d: Draft): TaskEdit {
   const before = draftOf(task);
   const e: TaskEdit = {};
-  for (const k of ["title", "body", "jira", "repo", "priority", "pr"] as const) {
+  for (const k of ["title", "body", "jira", "repo", "priority"] as const) {
     if (d[k].trim() !== before[k]) e[k] = d[k].trim();
   }
   if (d.due.trim() !== before.due) e.due = d.due.trim() || "none";
@@ -220,6 +228,12 @@ export function taskChanges(task: Task, d: Draft): TaskEdit {
   const untag = was.filter((x) => !now.includes(x));
   if (tag.length) e.tag = tag;
   if (untag.length) e.untag = untag;
+  const prsWas = prList(before.pr);
+  const prsNow = prList(d.pr);
+  const pr = prsNow.filter((x) => !prsWas.includes(x));
+  const unpr = prsWas.filter((x) => !prsNow.includes(x));
+  if (pr.length) e.pr = pr;
+  if (unpr.length) e.unpr = unpr;
   return e;
 }
 
@@ -232,7 +246,7 @@ function draftOf(t: Task): Draft {
     jira: t.jira ?? "",
     repo: t.repo ?? "",
     tags: (t.tags ?? []).join(", "),
-    pr: t.pr ?? "",
+    pr: (t.prs ?? []).join("\n"),
   };
 }
 

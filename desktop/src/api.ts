@@ -53,7 +53,7 @@ export interface Task {
   acceptance?: string;
   branch?: string;
   worktree?: string;
-  pr?: string;
+  prs?: string[];
   waiting_on?: string;
   follow_up?: string;
   created_at: string;
@@ -84,9 +84,10 @@ export interface TaskEdit {
   jira?: string;
   repo?: string;
   due?: string;
-  pr?: string;
   tag?: string[];
   untag?: string[];
+  pr?: string[];
+  unpr?: string[];
 }
 
 export interface Repo {

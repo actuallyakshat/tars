@@ -294,7 +294,12 @@ func (s *Store) MergeTask(from, into int64) error {
 	fill(&dst.Acceptance, src.Acceptance)
 	fill(&dst.Branch, src.Branch)
 	fill(&dst.Worktree, src.Worktree)
-	fill(&dst.PR, src.PR)
+	prs := dst.PRs
+	for _, p := range src.PRs {
+		if !contains(prs, p) {
+			prs = append(prs, p)
+		}
+	}
 	tags := dst.Tags
 	for _, t := range src.Tags {
 		if !contains(tags, t) {
@@ -313,7 +318,7 @@ func (s *Store) MergeTask(from, into int64) error {
 		args []any
 	}{
 		{`UPDATE tasks SET body=?, jira=?, repo=?, tags=?, due=?, acceptance=?, branch=?, worktree=?, pr=?, updated_at=? WHERE id=?`,
-			[]any{dst.Body, dst.Jira, dst.Repo, strings.Join(tags, ","), dst.Due, dst.Acceptance, dst.Branch, dst.Worktree, dst.PR, t, into}},
+			[]any{dst.Body, dst.Jira, dst.Repo, strings.Join(tags, ","), dst.Due, dst.Acceptance, dst.Branch, dst.Worktree, strings.Join(prs, ","), t, into}},
 		// A session that touched both tasks keeps its row on into.
 		{`INSERT OR IGNORE INTO task_sessions (task_id, session_id, first_at, last_at, via, title)
 			SELECT ?, session_id, first_at, last_at, via, title FROM task_sessions WHERE task_id = ?`, []any{into, from}},
