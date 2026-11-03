@@ -141,6 +141,8 @@ go run ./cmd/tars
 goreleaser release --snapshot --clean   # cross-platform binaries in dist/
 ```
 
+To release, run `scripts/release.sh 1.2.3 "one-line summary"` on a clean, up-to-date `main`. It bumps the plugin and desktop versions, commits, tags `v1.2.3` and pushes after you confirm. The tag starts CI, which publishes the CLI, Tars.app and both Homebrew casks.
+
 ### A dev build next to the release
 
 `tars dev update` builds your checkout and installs it beside the released tars, without touching it:
