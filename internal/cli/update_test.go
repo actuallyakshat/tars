@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -56,16 +57,15 @@ func TestUpdateUpgradesWhatsInstalled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	want := []string{
-		"brew update",
-		"brew list --cask tars", "brew upgrade --cask tars",
-		"brew list --cask tars-app",
-		"claude plugin marketplace update tars", "claude plugin update tars@tars",
+	want := []string{"brew update", "brew list --cask tars", "brew upgrade --cask tars"}
+	if runtime.GOOS == "darwin" { // the app is macOS only
+		want = append(want, "brew list --cask tars-app")
 	}
+	want = append(want, "claude plugin marketplace update tars", "claude plugin update tars@tars")
 	if strings.Join(sh.ran, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("ran:\n%s", strings.Join(sh.ran, "\n"))
 	}
-	if !strings.Contains(out, "brew install --cask actuallyakshat/tap/tars-app") {
+	if runtime.GOOS == "darwin" && !strings.Contains(out, "brew install --cask actuallyakshat/tap/tars-app") {
 		t.Fatalf("should say how to install the app:\n%s", out)
 	}
 }
