@@ -1,6 +1,6 @@
 {
   "name": "tars",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "One place for everything your coding agents do. Captures every Claude Code session into tars, linked to its task or held as unfiled for you to sort, plus /tars:tars to ask about it and /tars:update.",
   "author": {
     "name": "Akshat Dubey",
